@@ -24,7 +24,7 @@ class ChemGLaM(L.LightningModule):
         self.mlp_net = MLPNet()
 
         num_target_encoder_layers = int(self.protein_model_name.split("_")[1].split("t")[1])  # facebook/esm2_t30_150M_UR50D => 30
-        self.num_target_encoders_tuned = 2  # TODO: configで指定
+        self.num_target_encoders_tuned = config.num_target_encoders_tuned
 
         lora_target_modules = [
             [f"esm.encoder.layer.{i}.attention.self.query" for i in range(num_target_encoder_layers - self.num_target_encoders_tuned, num_target_encoder_layers)],
@@ -38,9 +38,9 @@ class ChemGLaM(L.LightningModule):
             task_type=TaskType.SEQ_CLS,
             target_modules=self.lora_target_modules,
             inference_mode=False,
-            r=4,  # TODO: configで指定
-            lora_alpha=32  # TODO: configで指定
-            lora_dropout=0.1  # TODO: configで指定
+            r=config.lora_r,
+            lora_alpha=config.lora_alpha,
+            lora_dropout=config.lora_dropout
         )
 
         self.target_encoder = self.set_lora_config(self.model, self.lora_config)
