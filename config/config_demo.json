@@ -1,0 +1,8 @@
+{
+    "protein_model_name": "facebook/esm2_t30_150M_UR50D",
+    "learning_rate": 1e-4,
+    "num_target_encoders_tuned": 2,
+    "lora_r": 4,
+    "lora_alpha": 32,
+    "lora_dropout": 0.1
+}
