@@ -1,10 +1,9 @@
 
 import lightning as L
 import torch
-from transformers import AutoModel, AutoTokenizer
-from peft import get_peft_model, LoraConfig, TaskType
+from transformers import AutoModelForImageClassification
+from peft import LoraConfig, TaskType
 
-from transformers import AutoModelForSequenceClassification
 from src.utils.config import Config
 from src.model.cross_attention import CrossAttention
 from src.model.layers import MLPNet
