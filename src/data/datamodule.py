@@ -9,10 +9,22 @@ class DTIDataModule(L.LightningDataModule):
         super().__init__()
         self.config = config
 
-    def setup(self, stage: str = None):
-        # TODO implement
+    def prepare_data(self):
+        # TODO implement for tokenization
 
-        pass
+        # tokenize
+
+        # save to disk
+
+    def setup(self, stage: str = None):
+        # TODO implement for dataset creation
+
+        # load from disk
+        self.dataset = None  # TODO: implement dataset creation
+
+        # split dataset
+        self.train_dataset, self.val_dataset, self.test_dataset = random_split(
+            self.dataset, [0.8, 0.1, 0.1])  # TODO: implement dataset splitting
 
     def train_dataloader(self):
         return DataLoader(self.train_dataset,
