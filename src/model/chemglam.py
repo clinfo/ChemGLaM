@@ -1,7 +1,7 @@
 
 import lightning as L
 import torch
-from transformers import AutoModelForImageClassification
+from transformers import AutoModel, AutoTokenizer
 from peft import LoraConfig, TaskType
 
 from src.utils.config import Config
