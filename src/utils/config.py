@@ -8,8 +8,17 @@ class Config:
                       "num_target_encoders_tuned": 2,
                       "lora_alpha": 32,
                       "lora_dropout": 0.1,
-                      "r": 4
-                      }
+                      "r": 4,
+                      "dataset_path": "data/demo_dataset.csv",
+                      "protein_sequence_column": "target_sequence",
+                      "drug_smiles_column": "smiles",
+                      "cache_dir": "cache",
+                      "measure_name": "IC50",
+                      "train_ratio":0.8,
+                      "val_ratio":0.1,
+                      "batch_size": 32,
+                      "num_workers": 4,
+                    }
 
     def __init__(self, json_file):
         self.__dict__ = self.DEFAULT_CONFIG
