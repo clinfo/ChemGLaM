@@ -6,7 +6,7 @@ class MLPNet(nn.Module):
     """_summary_
 
     Args:
-    - inter_embed_dim: int, the dimension of the intermediate embeddings   
+    - emb_dim: int, the dimension of the intermediate embeddings   
     - num_classes: int, the number of classes to predict
     - dropout: float, the dropout rate
 
@@ -14,19 +14,19 @@ class MLPNet(nn.Module):
     - z: tensor, the output of the network
     """
 
-    def __init__(self, inter_embed_dim, num_classes, dropout=0.2):
+    def __init__(self, emb_dim, num_classes, dropout=0.2):
 
         super().__init__()
         self.desc_skip_connection = True
         print('dropout is {}'.format(dropout))
 
-        self.fc1 = nn.Linear(inter_embed_dim, inter_embed_dim)
+        self.fc1 = nn.Linear(emb_dim, emb_dim)
         self.dropout1 = nn.Dropout(dropout)
         self.relu1 = nn.GELU()
-        self.fc2 = nn.Linear(inter_embed_dim, inter_embed_dim)
+        self.fc2 = nn.Linear(emb_dim, emb_dim)
         self.dropout2 = nn.Dropout(dropout)
         self.relu2 = nn.GELU()
-        self.final = nn.Linear(inter_embed_dim, num_classes)
+        self.final = nn.Linear(emb_dim, num_classes)
 
     def forward(self, inter_emb):
         x_out = self.fc1(inter_emb)
