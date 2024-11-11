@@ -8,7 +8,10 @@ class Config:
                       "num_target_encoders_tuned": 2,
                       "lora_alpha": 32,
                       "lora_dropout": 0.1,
-                      "r": 4
+                      "r": 4,
+                      "batch_size": 32,
+                      "num_epochs": 10,
+                      "num_gpus": 1,
                       }
 
     def __init__(self, json_file):
