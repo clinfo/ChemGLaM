@@ -1,9 +1,9 @@
 {
-    "learning_rate": 0.001,
-    "protein_model_name": "facebook/esm1_t34_670M_UR50S",
+    "learning_rate": 1e-4,
+    "protein_model_name": "facebook/esm2_t30_150M_UR58D",
     "num_target_encoders_tuned": 2,
+    "lora_r": 4,
     "lora_alpha": 32,
-    "lora_dropout": 0.1,
     "r": 4,
     "dataset_path": "data/demo_dataset.csv",
     "protein_sequence_column": "target_sequence",
@@ -13,5 +13,7 @@
     "train_ratio":0.8,
     "val_ratio":0.1,
     "batch_size": 32,
-    "num_workers": 4
+    "num_workers": 4,
+    "lora_dropout": 0.1
+
 }
