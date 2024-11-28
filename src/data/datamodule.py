@@ -19,7 +19,7 @@ def normalize_smiles(smi, canonical, isomeric):
         normalized = None
     return normalized
 
-class PropertyPredictionDataset(torch.utils.data.Dataset):
+class DTIPredictionDataset(torch.utils.data.Dataset):
     def __init__(self, df, measure_name=None, tokenizer=None, stage=None):
         df = df[['smiles', 'target_sequence', measure_name]]
         df = df.dropna()
@@ -70,14 +70,14 @@ class DTIDataModule(L.LightningDataModule):
         # load data
         df = pd.read_csv(self.config.dataset_path)
         # make dataset
-        self.dataset = PropertyPredictionDataset(df, measure_name=self.config.measure_name)
+        self.dataset = DTIPredictionDataset(df, measure_name=self.config.measure_name)
         
         # tokenize and save cache if not exists
 
         # check if cache exists
         if os.path.exists(self.protein_embedding_cache_file) and os.path.exists(self.protein_masks_cache_file):
             print(f"Loading tokenized dataset from cache")
-            self.protein_emebbings = torch.load(self.protein_embeddings_cache_file)
+            self.protein_embeddings = torch.load(self.protein_embeddings_cache_file)
             self.protein_masks = torch.load(self.protein_masks_cache_file)
         
         # if not exists, tokenize and save cache

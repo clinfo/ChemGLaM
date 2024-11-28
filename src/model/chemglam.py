@@ -2,7 +2,7 @@
 import lightning as L
 import torch
 from transformers import AutoModel, AutoTokenizer
-from peft import LoraConfig, TaskType
+from peft import get_peft_model, LoraConfig, TaskType
 
 from src.utils.config import Config
 from src.model.cross_attention import CrossAttention
@@ -24,7 +24,7 @@ class ChemGLaM(L.LightningModule):
         super().__init__()
 
         self.config = config
-        self.save_hyperparameters(config)
+        self.save_hyperparameters(config.to_dict())
 
         self.protein_model_name = config.protein_model_name
 
@@ -48,11 +48,11 @@ class ChemGLaM(L.LightningModule):
         self.num_target_encoders_tuned = config.num_target_encoders_tuned
 
         lora_target_modules = [
-            [f"esm.encoder.layer.{i}.attention.self.query" for i in range(
+            [f"encoder.layer.{i}.attention.self.query" for i in range(
                 num_target_encoder_layers - self.num_target_encoders_tuned, num_target_encoder_layers)],
-            [f"esm.encoder.layer.{i}.attention.self.key" for i in range(
+            [f"encoder.layer.{i}.attention.self.key" for i in range(
                 num_target_encoder_layers - self.num_target_encoders_tuned, num_target_encoder_layers)],
-            [f"esm.encoder.layer.{i}.attention.self.value" for i in range(
+            [f"encoder.layer.{i}.attention.self.value" for i in range(
                 num_target_encoder_layers - self.num_target_encoders_tuned, num_target_encoder_layers)],
         ]
 
@@ -76,6 +76,15 @@ class ChemGLaM(L.LightningModule):
         self.loss = torch.nn.BCEWithLogitsLoss()
 
         self.learning_rate = config.learning_rate
+    
+    def set_lora_config(self, model, lora_config: LoraConfig):
+        for name, module in model.named_modules():
+            if name not in lora_config.target_modules:
+                module.requires_grad = False
+            if "classifier" in name:
+                module.requires_grad = True
+        lora_model = get_peft_model(model, lora_config)
+        return lora_model
 
     def forward(self, drug_idx, drug_mask, target_idx, target_mask):
         drug_output = self.drug_encoder(
