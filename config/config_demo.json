@@ -4,7 +4,6 @@
     "num_target_encoders_tuned": 2,
     "lora_r": 4,
     "lora_alpha": 32,
-    "r": 4,
     "dataset_path": "data/demo_dataset.csv",
     "protein_sequence_column": "target_sequence",
     "drug_smiles_column": "smiles",
@@ -14,6 +13,7 @@
     "val_ratio":0.1,
     "batch_size": 32,
     "num_workers": 4,
-    "lora_dropout": 0.1
-
+    "lora_dropout": 0,
+    "num_epochs": 10,
+    "num_gpus": 1
 }

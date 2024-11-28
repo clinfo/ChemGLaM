@@ -9,6 +9,7 @@ class Config:
                       "lora_alpha": 32,
                       "lora_dropout": 0.1,
                       "r": 4,
+<<<<<<< HEAD
                       "dataset_path": "data/demo_dataset.csv",
                       "protein_sequence_column": "target_sequence",
                       "drug_smiles_column": "smiles",
@@ -19,6 +20,12 @@ class Config:
                       "batch_size": 32,
                       "num_workers": 4,
                     }
+=======
+                      "batch_size": 32,
+                      "num_epochs": 10,
+                      "num_gpus": 1,
+                      }
+>>>>>>> develop
 
     def __init__(self, json_file):
         self.__dict__ = self.DEFAULT_CONFIG
