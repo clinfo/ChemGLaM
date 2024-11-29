@@ -39,7 +39,6 @@ class MLPNet(nn.Module):
         z = self.dropout2(z)
         z = self.relu2(z)
         z = self.final(z + x_out)
-
         return z
 
 
