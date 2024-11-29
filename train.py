@@ -9,10 +9,14 @@ from torch.utils.data import DataLoader
 from datetime import timedelta
 from lightning.pytorch.strategies import DDPStrategy
 from lightning.pytorch.callbacks import ModelCheckpoint, EarlyStopping
+from lightning import seed_everything
 
 from src.model.chemglam import ChemGLaM
 from src.data.datamodule import DTIDataModule
 from src.utils.config import Config
+
+import torch
+torch.set_float32_matmul_precision('medium')
 
 def main():
     args = argparse.ArgumentParser()
@@ -21,6 +25,8 @@ def main():
 
     #json_fileからconfigを読み込む
     config = Config(args.config)
+    seed_everything(config.seed, workers=True)
+    
     model = ChemGLaM(config)
     datamodule = DTIDataModule(config)
 
@@ -44,7 +50,6 @@ def main():
         gradient_clip_val=None,
         default_root_dir="./logs",
         devices=config.num_gpus,
-        precision="16-mixed",
         callbacks=[checkpoint_callback, early_stopping_callback]
     )
 

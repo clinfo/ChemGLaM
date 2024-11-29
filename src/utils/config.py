@@ -23,6 +23,7 @@ class Config:
         "num_epochs": 10,
         "num_gpus": 1,
         "num_classes": 1,
+        "seed": 42
         }
 
     def __init__(self, json_file):
