@@ -2,7 +2,7 @@ import lightning as L
 from torch.utils.data import random_split, DataLoader
 import pandas as pd
 import torch
-from transformers import AutoTokenizer, EsmModel
+from transformers import AutoTokenizer, EsmModel, DataCollatorWithPadding
 from rdkit import Chem
 import re
 import os
@@ -22,10 +22,10 @@ class DTIPredictionDataset(torch.utils.data.Dataset):
         target_id = self.df.loc[index, 'target_id']
         protein_token = self.protein_tokens[target_id]
         if self.measure_name is None and self.stage == 'predict':
-            return canonical_smiles, protein_token["input_ids"], protein_token["attention_mask"], index
+            return canonical_smiles, protein_token, index
         else:
             measure = self.df.loc[index, self.measure_name]
-            return canonical_smiles, protein_token["input_ids"], protein_token["attention_mask"], measure, index
+            return canonical_smiles, protein_token, measure, index
     
     def __len__(self):
         return len(self.df)
@@ -40,6 +40,8 @@ class DTIDataModule(L.LightningDataModule):
         self.stage = None
         
         self.protein_tokenizer = AutoTokenizer.from_pretrained("facebook/esm2_t36_3B_UR50D")
+        self.protein_collator = DataCollatorWithPadding(tokenizer=self.protein_tokenizer)
+        
         self.smi_tokenizer = AutoTokenizer.from_pretrained('ibm/MoLFormer-XL-both-10pct', trust_remote_code=True)
         
         self.load_csv(self.config.dataset_path) 
@@ -52,7 +54,6 @@ class DTIDataModule(L.LightningDataModule):
         df['target_id'] = df['target_sequence'].factorize()[0]
         df['canonical_smiles'] = df['smiles'].apply(lambda smi: self.normalize_smiles(smi, canonical=True, isomeric=False))
         df['replaced_sequence'] = df['target_sequence'].apply(lambda seq: " ".join(list(re.sub(r"[UZOB]", "X", seq))))
-        df['replaced_sequence'] = df['replaced_sequence'].apply(lambda seq: seq[:2048])
         
         df_good = df.dropna(subset=['canonical_smiles', 'replaced_sequence'])  # TODO - Check why some rows are na
         
@@ -66,9 +67,10 @@ class DTIDataModule(L.LightningDataModule):
         # if not exists, tokenize and save cache
         if not os.path.exists(self.protein_tokens_cache_file):
             protein_tokens = {}
-            for i in tqdm(range(len(self.df))):
-                target_id, target_sequence = self.df.loc[i, 'target_id'], self.df.loc[i, 'replaced_sequence']
-                protein_token = self.protein_tokenizer(target_sequence, max_length=2050, padding="max_length", return_tensors="pt")
+            df_unique_target = self.df.drop_duplicates(subset=['target_id']).reset_index(drop=True)
+            for i in tqdm(range(len(df_unique_target))):
+                target_id, target_sequence = df_unique_target.loc[i, 'target_id'], df_unique_target.loc[i, 'replaced_sequence']
+                protein_token = self.protein_tokenizer(target_sequence, max_length=2050, truncation=True)
                 protein_tokens[target_id] = protein_token
             
             self.protein_tokens = protein_tokens    
@@ -93,23 +95,26 @@ class DTIDataModule(L.LightningDataModule):
         else:
             raise ValueError(f"Stage {stage} not recognized")
     
+    
     def collate_fn(self, batch):
         if self.stage == 'predict':
-            smiles, protein_input_ids, protein_attention_mask, index = zip(*batch)
+            smiles, protein_token, index = zip(*batch)
             smi_tokens = self.smi_tokenizer(smiles, padding=True, add_special_tokens=True) # TODO: want to take out smiles from the tokenized cache (Calculation time may be almost the same...)
+            protein_token = self.protein_collator(protein_token)
             batch = {"drug_ids": torch.tensor(smi_tokens['input_ids']),
                      "drug_mask": torch.tensor(smi_tokens['attention_mask']),
-                     "target_ids": torch.cat(protein_input_ids, dim=0),
-                     "target_mask": torch.cat(protein_attention_mask, dim=0),
+                     "target_ids": protein_token['input_ids'],
+                     "target_mask": protein_token['attention_mask'],
                      "index": index}
             return batch
         else:
-            smiles, protein_input_ids, protein_attention_mask, measures, index = zip(*batch)
+            smiles, protein_token, measures, index = zip(*batch)
             smi_tokens = self.smi_tokenizer(smiles, padding=True, add_special_tokens=True)
+            protein_token = self.protein_collator(protein_token)
             batch = {"drug_ids": torch.tensor(smi_tokens['input_ids']),
                     "drug_mask": torch.tensor(smi_tokens['attention_mask']),
-                    "target_ids": torch.cat(protein_input_ids, dim=0),
-                    "target_mask": torch.cat(protein_attention_mask, dim=0),
+                    "target_ids": protein_token['input_ids'],
+                    "target_mask": protein_token['attention_mask'],
                     "measures": torch.tensor(measures, dtype=torch.float).view(-1, self.config.num_classes),
                     "index": index}
             return batch
