@@ -2,12 +2,11 @@
 import lightning as L
 import torch
 from transformers import AutoModel, AutoTokenizer
-from peft import LoraConfig, TaskType
+from peft import get_peft_model, LoraConfig, TaskType
 
 from src.utils.config import Config
 from src.model.cross_attention import CrossAttention
 from src.model.layers import MLPNet
-
 
 class ChemGLaM(L.LightningModule):
 
@@ -24,14 +23,14 @@ class ChemGLaM(L.LightningModule):
         super().__init__()
 
         self.config = config
-        self.save_hyperparameters(config)
+        self.save_hyperparameters(config.to_dict())
 
         self.protein_model_name = config.protein_model_name
 
         self.drug_encoder = AutoModel.from_pretrained(
-            "ibm/MoLFormer-XL-both-10pct", trust_remote_code=True)
+            "ibm/MoLFormer-XL-both-10pct", trust_remote_code=True).train() # MoLFormerはfloat型でないとエラーが出る
         self.target_encoder = AutoModel.from_pretrained(
-            self.protein_model_name)
+            self.protein_model_name).half()
 
         self.cross_attention = CrossAttention(drug_dim=768,
                                               target_dim=self.protein_dim_table[self.protein_model_name],
@@ -40,48 +39,63 @@ class ChemGLaM(L.LightningModule):
                                               skip_connection=True)
 
         self.mlp_net = MLPNet(emb_dim=768+self.protein_dim_table[self.protein_model_name],
-                              num_classes=config.num_classes,  # TODO: implement num_classes
-                              dropout=config.dropout)  # TODO: implement dropout
+                              num_classes=config.num_classes, 
+                              dropout=config.dropout) 
 
         num_target_encoder_layers = int(self.protein_model_name.split(
             "_")[1].split("t")[1])  # facebook/esm2_t30_150M_UR50D => 30
+        
         self.num_target_encoders_tuned = config.num_target_encoders_tuned
+        if config.num_target_encoders_tuned >= 1:
+            lora_target_modules = [
+                [f"encoder.layer.{i}.attention.self.query" for i in range(
+                    num_target_encoder_layers - self.num_target_encoders_tuned, num_target_encoder_layers)],
+                [f"encoder.layer.{i}.attention.self.key" for i in range(
+                    num_target_encoder_layers - self.num_target_encoders_tuned, num_target_encoder_layers)],
+                [f"encoder.layer.{i}.attention.self.value" for i in range(
+                    num_target_encoder_layers - self.num_target_encoders_tuned, num_target_encoder_layers)],
+            ]
+            
+            self.lora_target_modules = [
+                item for sublist in lora_target_modules for item in sublist]
 
-        lora_target_modules = [
-            [f"esm.encoder.layer.{i}.attention.self.query" for i in range(
-                num_target_encoder_layers - self.num_target_encoders_tuned, num_target_encoder_layers)],
-            [f"esm.encoder.layer.{i}.attention.self.key" for i in range(
-                num_target_encoder_layers - self.num_target_encoders_tuned, num_target_encoder_layers)],
-            [f"esm.encoder.layer.{i}.attention.self.value" for i in range(
-                num_target_encoder_layers - self.num_target_encoders_tuned, num_target_encoder_layers)],
-        ]
-
-        self.lora_target_modules = [
-            item for sublist in lora_target_modules for item in sublist]
-
-        self.lora_config = LoraConfig(
-            task_type=TaskType.SEQ_CLS,
-            target_modules=self.lora_target_modules,
-            inference_mode=False,
-            r=config.lora_r,
-            lora_alpha=config.lora_alpha,
-            lora_dropout=config.lora_dropout
-        )
-
-        self.target_encoder = self.set_lora_config(
-            self.target_encoder, self.lora_config)
-        self.target_encoder.print_trainable_parameters()
+            self.lora_config = LoraConfig(
+                task_type=TaskType.FEATURE_EXTRACTION,
+                target_modules=self.lora_target_modules,
+                inference_mode=False,
+                r=config.lora_r,
+                lora_alpha=config.lora_alpha,
+                lora_dropout=config.lora_dropout
+            )
+            
+            self.target_encoder = self.set_lora_config(
+                self.target_encoder, self.lora_config)
+            self.target_encoder.print_trainable_parameters()
+        else:
+            for name, module in self.target_encoder.named_modules():
+                module.requires_grad = False
+            if "classifier" in name:
+                module.requires_grad = True
 
         # TODO: Implement configuration for loss function
         self.loss = torch.nn.BCEWithLogitsLoss()
 
         self.learning_rate = config.learning_rate
+    
+    def set_lora_config(self, model, lora_config: LoraConfig):
+        for name, module in model.named_modules():
+            if name not in lora_config.target_modules:
+                module.requires_grad = False
+            if "classifier" in name:
+                module.requires_grad = True
+        lora_model = get_peft_model(model, lora_config)
+        return lora_model
 
-    def forward(self, drug_idx, drug_mask, target_idx, target_mask):
+    def forward(self, drug_ids, drug_mask, target_ids, target_mask):
         drug_output = self.drug_encoder(
-            drug_idx, attention_mask=drug_mask).pooler_output
+            drug_ids, attention_mask=drug_mask).pooler_output
         target_output = self.target_encoder(
-            target_idx, attention_mask=target_mask).last_hidden_state[:, 0, :]
+            target_ids, attention_mask=target_mask).last_hidden_state[:, 0, :]
 
         interaction_output, weight = self.cross_attention(
             drug_output, target_output)
@@ -89,51 +103,45 @@ class ChemGLaM(L.LightningModule):
         output = self.mlp_net(interaction_output)
 
         return output, weight
-
-    def training_step(self, batch, batch_idx):
-        drug_idx = batch["drug_idx"]
+    
+    def shared_step(self, batch):
+        drug_ids = batch["drug_ids"]
         drug_mask = batch["drug_mask"]
-        target_idx = batch["target_idx"]
+        target_ids = batch["target_ids"]
         target_mask = batch["target_mask"]
-        labels = batch["labels"]
-
+        measures = batch["measures"]
+        
         drug_output = self.drug_encoder(
-            drug_idx, attention_mask=drug_mask).pooler_output
+            input_ids=drug_ids, attention_mask=drug_mask).last_hidden_state
         target_output = self.target_encoder(
-            target_idx, attention_mask=target_mask).last_hidden_state[:, 0, :]
-
+            input_ids=target_ids, attention_mask=target_mask).last_hidden_state
+        
         interaction_output, _ = self.cross_attention(
             drug_output, target_output)
-
+        
+        input_mask_expanded = drug_mask.unsqueeze(-1).expand(interaction_output.size()).float()
+        sum_embeddings = torch.sum(interaction_output * input_mask_expanded, 1)
+        sum_mask = torch.clamp(input_mask_expanded.sum(1), min=1e-9)
+        interaction_output = sum_embeddings / sum_mask
+ 
+        target_output = target_output * target_mask.unsqueeze(-1)
+        target_output = target_output.sum(dim=1) / target_mask.sum(dim=1).unsqueeze(-1)
+        
+        interaction_output = torch.cat([interaction_output, target_output], dim=1)
+        
         output = self.mlp_net(interaction_output)
-
-        loss = self.loss(output, labels)
-
-        self.log("train_loss", loss, on_step=True)
-
+        
+        loss = self.loss(output, measures)
+        return loss
+    
+    def training_step(self, batch, batch_idx):
+        loss = self.shared_step(batch)
+        self.log("train_loss", loss, on_step=True, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        drug_idx = batch["drug_idx"]
-        drug_mask = batch["drug_mask"]
-        target_idx = batch["target_idx"]
-        target_mask = batch["target_mask"]
-        labels = batch["labels"]
-
-        drug_output = self.drug_encoder(
-            drug_idx, attention_mask=drug_mask).pooler_output
-        target_output = self.target_encoder(
-            target_idx, attention_mask=target_mask).last_hidden_state[:, 0, :]
-
-        interaction_output, _ = self.cross_attention(
-            drug_output, target_output)
-
-        output = self.mlp_net(interaction_output)
-
-        loss = self.loss(output, labels)
-
-        self.log("val_loss", loss, on_step=True)
-
+        loss = self.shared_step(batch)
+        self.log("val_loss", loss, on_step=False, on_epoch=True, sync_dist=True, prog_bar=True)
         return loss
 
     def configure_optimizers(self):

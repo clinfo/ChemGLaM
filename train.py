@@ -6,22 +6,27 @@ import lightning as L
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
-from datasets import load_dataset
 from datetime import timedelta
 from lightning.pytorch.strategies import DDPStrategy
 from lightning.pytorch.callbacks import ModelCheckpoint, EarlyStopping
+from lightning import seed_everything
 
 from src.model.chemglam import ChemGLaM
 from src.data.datamodule import DTIDataModule
 from src.utils.config import Config
 
+import torch
+torch.set_float32_matmul_precision('medium')
+
 def main():
     args = argparse.ArgumentParser()
-    args.addargument("--config", type=str, defalut="./config/config_demo.json")
+    args.add_argument("-c", "--config", type=str, default="./config/config_demo.json")
     args = args.parse_args()
 
     #json_fileからconfigを読み込む
     config = Config(args.config)
+    seed_everything(config.seed, workers=True)
+    
     model = ChemGLaM(config)
     datamodule = DTIDataModule(config)
 
@@ -39,14 +44,12 @@ def main():
     )
     
     trainer = L.Trainer(
-        max_epochs=config.max_epochs,
+        max_epochs=config.num_epochs,
         enable_progress_bar=True,
         accelerator="gpu",
         gradient_clip_val=None,
-        enable_progress_bar=True,
         default_root_dir="./logs",
         devices=config.num_gpus,
-        precision="16-mixed",
         callbacks=[checkpoint_callback, early_stopping_callback]
     )
 
