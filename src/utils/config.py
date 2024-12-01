@@ -4,6 +4,7 @@ import json
 class Config:
 
     DEFAULT_CONFIG = {
+        "experiment_name": "demo",
         "learning_rate": 0.001,
         "protein_model_name": "facebook/esm2_t36_3B_UR50D",
         "num_target_encoders_tuned": 2,

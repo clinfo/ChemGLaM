@@ -8,6 +8,7 @@ from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from datetime import timedelta
 from lightning.pytorch.strategies import DDPStrategy
+from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.callbacks import ModelCheckpoint, EarlyStopping
 from lightning import seed_everything
 
@@ -34,7 +35,7 @@ def main():
         monitor="val_loss",
         mode="min",
         save_top_k=1,
-        dirpath="./logs",
+        dirpath=f"./logs/{config.experiment_name}",
         filename="best_checkpoint"
     )
     early_stopping_callback = EarlyStopping(
@@ -43,14 +44,17 @@ def main():
         mode="min"
     )
     
+    wandb_logger = WandbLogger(project="ChemGLaM", name=config.experiment_name)
+    
     trainer = L.Trainer(
         max_epochs=config.num_epochs,
         enable_progress_bar=True,
         accelerator="gpu",
         gradient_clip_val=None,
-        default_root_dir="./logs",
+        default_root_dir=f"./logs/{config.experiment_name}",
         devices=config.num_gpus,
-        callbacks=[checkpoint_callback, early_stopping_callback]
+        callbacks=[checkpoint_callback, early_stopping_callback],
+        logger=wandb_logger,
     )
 
     trainer.fit(model, datamodule)
