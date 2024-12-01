@@ -1,4 +1,5 @@
 {
+    "experiment_name": "demo",
     "protein_model_name": "facebook/esm2_t36_3B_UR50D",
     "learning_rate": 1e-4,
     "dropout": 0.1,
