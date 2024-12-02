@@ -1,21 +1,21 @@
 import json
 
-
 class Config:
 
     DEFAULT_CONFIG = {
+        "experiment_name": "demo",
         "learning_rate": 0.001,
         "protein_model_name": "facebook/esm2_t36_3B_UR50D",
         "num_target_encoders_tuned": 2,
+        "featurized_protein": False,
         "lora_alpha": 32,
         "lora_dropout": 0.1,
         "dropout": 0.1,
         "lora_r": 4,
-        "dataset_path": "data/demo_dataset.csv",
+        "dataset_csv_path": "data/demo_dataset.csv",
         "protein_sequence_column": "target_sequence",
         "drug_smiles_column": "smiles",
-        "cache_dir": "cache",
-        "measure_name": "IC50",
+        "target_columns": ["IC50"],
         "train_ratio":0.8,
         "val_ratio":0.1,
         "batch_size": 32,
@@ -23,7 +23,9 @@ class Config:
         "num_epochs": 10,
         "num_gpus": 1,
         "num_classes": 1,
-        "seed": 42
+        "seed": 42,
+        "task_type": "classification",
+        "evidential": False
         }
 
     def __init__(self, json_file):

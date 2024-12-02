@@ -72,14 +72,21 @@ class ChemGLaM(L.LightningModule):
                 self.target_encoder, self.lora_config)
             self.target_encoder.print_trainable_parameters()
         else:
-            for name, module in self.target_encoder.named_modules():
-                module.requires_grad = False
-            if "classifier" in name:
-                module.requires_grad = True
+            self.target_encoder.eval()
+            for param in self.target_encoder.parameters():
+                param.requires_grad = False
+                
+            for name, param in self.target_encoder.named_parameters():
+                print(f"{name}: requires_grad={param.requires_grad}")
 
         # TODO: Implement configuration for loss function
-        self.loss = torch.nn.BCEWithLogitsLoss()
-
+        if config.task_type == "classification" and not config.evidential:
+            self.loss = torch.nn.BCEWithLogitsLoss()
+        elif config.task_type == "classification" and config.evidential:
+            self.loss = EvidentialLoss()
+        elif config.task_type == "regression":
+            self.loss = torch.nn.MSELoss()
+    
         self.learning_rate = config.learning_rate
     
     def set_lora_config(self, model, lora_config: LoraConfig):
