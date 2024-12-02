@@ -7,7 +7,7 @@ class Config:
         "learning_rate": 0.001,
         "protein_model_name": "facebook/esm2_t36_3B_UR50D",
         "num_target_encoders_tuned": 2,
-        "featurized_protein": False,
+        "featurization_type": "token",
         "lora_alpha": 32,
         "lora_dropout": 0.1,
         "dropout": 0.1,
