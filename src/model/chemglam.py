@@ -29,8 +29,12 @@ class ChemGLaM(L.LightningModule):
 
         self.drug_encoder = AutoModel.from_pretrained(
             "ibm/MoLFormer-XL-both-10pct", trust_remote_code=True).train() # MoLFormerはfloat型でないとエラーが出る
-        self.target_encoder = AutoModel.from_pretrained(
-            self.protein_model_name).half()
+        
+        if config.featurization_type == "embedding":
+            self.target_encoder = None
+        else:       
+            self.target_encoder = AutoModel.from_pretrained(
+                self.protein_model_name).half()
 
         self.cross_attention = CrossAttention(drug_dim=768,
                                               target_dim=self.protein_dim_table[self.protein_model_name],
@@ -46,6 +50,10 @@ class ChemGLaM(L.LightningModule):
             "_")[1].split("t")[1])  # facebook/esm2_t30_150M_UR50D => 30
         
         self.num_target_encoders_tuned = config.num_target_encoders_tuned
+
+        assert (config.featurization_type != "embedding") or (self.num_target_encoders_tuned < 1), \
+            'LoRA can not be used when featurization_type is "embedding"'
+            
         if config.num_target_encoders_tuned >= 1:
             lora_target_modules = [
                 [f"encoder.layer.{i}.attention.self.query" for i in range(
@@ -72,14 +80,11 @@ class ChemGLaM(L.LightningModule):
                 self.target_encoder, self.lora_config)
             self.target_encoder.print_trainable_parameters()
         else:
-            self.target_encoder.eval()
-            for param in self.target_encoder.parameters():
-                param.requires_grad = False
+            if self.target_encoder is not None:  
+                self.target_encoder.eval()
+                for param in self.target_encoder.parameters():
+                    param.requires_grad = False
                 
-            for name, param in self.target_encoder.named_parameters():
-                print(f"{name}: requires_grad={param.requires_grad}")
-
-        # TODO: Implement configuration for loss function
         if config.task_type == "classification" and not config.evidential:
             self.loss = torch.nn.BCEWithLogitsLoss()
         elif config.task_type == "classification" and config.evidential:
@@ -98,33 +103,23 @@ class ChemGLaM(L.LightningModule):
         lora_model = get_peft_model(model, lora_config)
         return lora_model
 
-    def forward(self, drug_ids, drug_mask, target_ids, target_mask):
-        drug_output = self.drug_encoder(
-            drug_ids, attention_mask=drug_mask).pooler_output
-        target_output = self.target_encoder(
-            target_ids, attention_mask=target_mask).last_hidden_state[:, 0, :]
-
-        interaction_output, weight = self.cross_attention(
-            drug_output, target_output)
-
-        output = self.mlp_net(interaction_output)
-
-        return output, weight
-    
-    def shared_step(self, batch):
+    def forward(self, batch):
         drug_ids = batch["drug_ids"]
         drug_mask = batch["drug_mask"]
         target_ids = batch["target_ids"]
         target_mask = batch["target_mask"]
-        measures = batch["measures"]
         
         drug_output = self.drug_encoder(
             input_ids=drug_ids, attention_mask=drug_mask).last_hidden_state
-        target_output = self.target_encoder(
-            input_ids=target_ids, attention_mask=target_mask).last_hidden_state
         
-        interaction_output, _ = self.cross_attention(
-            drug_output, target_output)
+        if self.target_encoder is not None:
+            target_output = self.target_encoder(
+                input_ids=target_ids, attention_mask=target_mask).last_hidden_state
+        else:
+            target_output = batch["target_embedding"]
+        
+        interaction_output, weight = self.cross_attention(
+            drug_output, target_output, drug_mask, target_mask)
         
         input_mask_expanded = drug_mask.unsqueeze(-1).expand(interaction_output.size()).float()
         sum_embeddings = torch.sum(interaction_output * input_mask_expanded, 1)
@@ -137,17 +132,21 @@ class ChemGLaM(L.LightningModule):
         interaction_output = torch.cat([interaction_output, target_output], dim=1)
         
         output = self.mlp_net(interaction_output)
-        
-        loss = self.loss(output, measures)
-        return loss
+
+        return output, weight
+
     
     def training_step(self, batch, batch_idx):
-        loss = self.shared_step(batch)
+        output, _ = self(batch)
+        measures = batch["measures"]
+        loss = self.loss(output, measures)
         self.log("train_loss", loss, on_step=True, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        loss = self.shared_step(batch)
+        output, _ = self(batch)
+        measures = batch["measures"]
+        loss = self.loss(output, measures)
         self.log("val_loss", loss, on_step=False, on_epoch=True, sync_dist=True, prog_bar=True)
         return loss
 
