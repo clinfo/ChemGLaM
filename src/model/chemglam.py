@@ -1,8 +1,8 @@
-
 import lightning as L
 import torch
 from transformers import AutoModel, AutoTokenizer
 from peft import get_peft_model, LoraConfig, TaskType
+from sklearn.metrics import roc_auc_score, precision_recall_curve, auc
 
 from src.utils.config import Config
 from src.model.cross_attention import CrossAttention
@@ -148,7 +148,46 @@ class ChemGLaM(L.LightningModule):
         measures = batch["measures"]
         loss = self.loss(output, measures)
         self.log("val_loss", loss, on_step=False, on_epoch=True, sync_dist=True, prog_bar=True)
-        return loss
+        
+        preds = torch.sigmoid(output) if self.config.task_type == "classification" else output
+        return {"val_loss": loss, "preds": preds, "targets": measures}
+
+    def validation_epoch_end(self, outputs):
+        avg_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
+        self.log('avg_val_loss', avg_loss, sync_dist=True, prog_bar=True)
+        
+        preds = torch.cat([x['preds'] for x in outputs])
+        targets = torch.cat([x['targets'] for x in outputs])
+        
+        if self.config.task_type == "classification":
+            roc_auc = roc_auc_score(targets.cpu().numpy(), preds.cpu().numpy())
+            precision, recall, _ = precision_recall_curve(targets.cpu().numpy(), preds.cpu().numpy())
+            pr_auc = auc(recall, precision)
+            self.log('val_roc_auc', roc_auc, sync_dist=True, prog_bar=True)
+            self.log('val_pr_auc', pr_auc, sync_dist=True, prog_bar=True)
+
+    def test_step(self, batch, batch_idx):
+        output, _ = self(batch)
+        measures = batch["measures"]
+        loss = self.loss(output, measures)
+        self.log("test_loss", loss, on_step=False, on_epoch=True, sync_dist=True, prog_bar=True)
+        
+        preds = torch.sigmoid(output) if self.config.task_type == "classification" else output
+        return {"test_loss": loss, "preds": preds, "targets": measures}
+
+    def test_epoch_end(self, outputs):
+        avg_loss = torch.stack([x['test_loss'] for x in outputs]).mean()
+        self.log('avg_test_loss', avg_loss, sync_dist=True, prog_bar=True)
+        
+        preds = torch.cat([x['preds'] for x in outputs])
+        targets = torch.cat([x['targets'] for x in outputs])
+        
+        if self.config.task_type == "classification":
+            roc_auc = roc_auc_score(targets.cpu().numpy(), preds.cpu().numpy())
+            precision, recall, _ = precision_recall_curve(targets.cpu().numpy(), preds.cpu().numpy())
+            pr_auc = auc(recall, precision)
+            self.log('test_roc_auc', roc_auc, sync_dist=True, prog_bar=True)
+            self.log('test_pr_auc', pr_auc, sync_dist=True, prog_bar=True)
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate)
