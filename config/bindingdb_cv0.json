@@ -4,7 +4,7 @@
     "learning_rate": 1e-4,
     "dropout": 0.1,
     "num_target_encoders_tuned": 0,
-    "featurized_protein": false,
+    "featurization_type": "embedding",
     "lora_r": 4,
     "lora_alpha": 32,
     "dataset_csv_path": "data/bindingdb/cv0/total.csv",
