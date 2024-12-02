@@ -1,30 +1,34 @@
 import lightning as L
-from torch.utils.data import random_split, DataLoader
+from torch.utils.data import random_split, Subset, DataLoader
 import pandas as pd
 import torch
 from transformers import AutoTokenizer, EsmModel, DataCollatorWithPadding
 from rdkit import Chem
+import numpy as np
 import re
 import os
+import json
 from tqdm import tqdm
+from typing import List
 
 from src.utils.config import Config
 
 
 class DTIPredictionDataset(torch.utils.data.Dataset):
-    def __init__(self, df, protein_tokens, measure_name=None):
+    def __init__(self, df, protein_tokens, target_columns: List[str] = None):
         self.df = df
         self.protein_tokens = protein_tokens
-        self.measure_name = measure_name
+        self.target_columns = target_columns
+        self.target_values = self.df[target_columns].values
         
     def __getitem__(self, index):
         canonical_smiles = self.df.loc[index, 'canonical_smiles']
         target_id = self.df.loc[index, 'target_id']
         protein_token = self.protein_tokens[target_id]
-        if self.measure_name is None and self.stage == 'predict':
+        if self.target_columns is None and self.stage == 'predict':
             return canonical_smiles, protein_token, index
         else:
-            measure = self.df.loc[index, self.measure_name]
+            measure = self.target_values[index]
             return canonical_smiles, protein_token, measure, index
     
     def __len__(self):
@@ -34,28 +38,28 @@ class DTIDataModule(L.LightningDataModule):
     def __init__(self, config: Config):
         super().__init__()
         self.config = config
-        self.cache_dir = self.config.cache_dir
+        self.cache_dir = f"cache/{self.config.experiment_name}"
         os.makedirs(self.cache_dir, exist_ok=True)
         self.protein_tokens_cache_file = os.path.join(self.cache_dir, f"tokenized_protein_tokens.pt")
         self.stage = None
         
-        self.protein_tokenizer = AutoTokenizer.from_pretrained("facebook/esm2_t36_3B_UR50D")
+        self.protein_tokenizer = AutoTokenizer.from_pretrained(self.config.protein_model_name, trust_remote_code=True)
         self.protein_collator = DataCollatorWithPadding(tokenizer=self.protein_tokenizer)
         
         self.smi_tokenizer = AutoTokenizer.from_pretrained('ibm/MoLFormer-XL-both-10pct', trust_remote_code=True)
         
-        self.load_csv(self.config.dataset_path) 
+        self.load_csv(self.config.dataset_csv_path) 
         
     def load_csv(self, path):
         df = pd.read_csv(path)
-        df = df[['smiles', 'target_sequence', self.config.measure_name]]
-        df = df.dropna(subset=['smiles', 'target_sequence', self.config.measure_name])
+        df = df[['smiles', 'target_sequence', *self.config.target_columns]]
+        df = df.dropna(subset=['smiles', 'target_sequence', *self.config.target_columns])
         # target_sequence に IDを付与する
         df['target_id'] = df['target_sequence'].factorize()[0]
         df['canonical_smiles'] = df['smiles'].apply(lambda smi: self.normalize_smiles(smi, canonical=True, isomeric=False))
         df['replaced_sequence'] = df['target_sequence'].apply(lambda seq: " ".join(list(re.sub(r"[UZOB]", "X", seq))))
         
-        df_good = df.dropna(subset=['canonical_smiles', 'replaced_sequence'])  # TODO - Check why some rows are na
+        df_good = df.dropna(subset=['canonical_smiles', 'replaced_sequence'])
         
         len_new = len(df_good)
         self.df = df_good.reset_index(drop=True)
@@ -79,15 +83,28 @@ class DTIDataModule(L.LightningDataModule):
     def setup(self, stage: str = None):
         print(f"Loading tokenized dataset from cache")
         self.protein_tokens = torch.load(self.protein_tokens_cache_file)
-        self.dataset = DTIPredictionDataset(self.df, self.protein_tokens, measure_name=self.config.measure_name)
+        self.dataset = DTIPredictionDataset(self.df, self.protein_tokens, target_columns=self.config.target_columns)
         self.stage = stage
         if stage == 'fit':
-            dataset_size = len(self.dataset)
-            train_size = int(self.config.train_ratio * dataset_size)
-            val_size = int(self.config.val_ratio * dataset_size)
-            test_size = dataset_size - train_size - val_size
-            # split dataset
-            self.train_dataset, self.val_dataset, self.test_dataset = random_split(self.dataset, [train_size, val_size, test_size])
+            if self.config.split_json_path is not None:
+                print(f"Loading split from {self.config.split_json_path}")
+                with open(self.config.split_json_path, 'r') as f:
+                    split_json = json.load(f)
+                train_indices = split_json['train']
+                valid_indices = split_json['valid']
+                test_indices = split_json['test']
+                # split dataset
+                self.train_dataset = torch.utils.data.Subset(self.dataset, train_indices)
+                self.val_dataset = torch.utils.data.Subset(self.dataset, valid_indices)
+                self.test_dataset = torch.utils.data.Subset(self.dataset, test_indices)
+            else:  
+                dataset_size = len(self.dataset)
+                train_size = int(self.config.train_ratio * dataset_size)
+                val_size = int(self.config.val_ratio * dataset_size)
+                test_size = dataset_size - train_size - val_size
+                # split dataset
+                self.train_dataset, self.val_dataset, self.test_dataset = \
+                    random_split(self.dataset, [train_size, val_size, test_size])
         elif stage == 'test':
             self.test_dataset = self.dataset
         elif stage == 'predict':
@@ -111,6 +128,7 @@ class DTIDataModule(L.LightningDataModule):
             smiles, protein_token, measures, index = zip(*batch)
             smi_tokens = self.smi_tokenizer(smiles, padding=True, add_special_tokens=True)
             protein_token = self.protein_collator(protein_token)
+            measures = np.array(measures)
             batch = {"drug_ids": torch.tensor(smi_tokens['input_ids']),
                     "drug_mask": torch.tensor(smi_tokens['attention_mask']),
                     "target_ids": protein_token['input_ids'],
