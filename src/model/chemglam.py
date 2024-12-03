@@ -1,8 +1,8 @@
-
 import lightning as L
 import torch
 from transformers import AutoModel, AutoTokenizer
 from peft import get_peft_model, LoraConfig, TaskType
+from sklearn.metrics import roc_auc_score, precision_recall_curve, auc
 
 from src.utils.config import Config
 from src.model.cross_attention import CrossAttention
@@ -93,6 +93,8 @@ class ChemGLaM(L.LightningModule):
             self.loss = torch.nn.MSELoss()
     
         self.learning_rate = config.learning_rate
+        self.validation_outputs = []
+        self.test_outputs = []
     
     def set_lora_config(self, model, lora_config: LoraConfig):
         for name, module in model.named_modules():
@@ -109,8 +111,16 @@ class ChemGLaM(L.LightningModule):
         target_ids = batch["target_ids"]
         target_mask = batch["target_mask"]
         
+        # print("drug_ids", drug_ids.shape)
+        # print("drug_mask", drug_mask.shape)
+        # print("target_ids", target_ids.shape)
+        # print("target_mask", target_mask.shape)
+        
+        
         drug_output = self.drug_encoder(
             input_ids=drug_ids, attention_mask=drug_mask).last_hidden_state
+        
+        # print("drug_output", drug_output.shape)
         
         if self.target_encoder is not None:
             target_output = self.target_encoder(
@@ -118,20 +128,32 @@ class ChemGLaM(L.LightningModule):
         else:
             target_output = batch["target_embedding"]
         
+        # print("target_output", target_output.shape)
+        
         interaction_output, weight = self.cross_attention(
             drug_output, target_output, drug_mask, target_mask)
+        
+        # print("interaction_output", interaction_output.shape)
+        # print("weight", weight.shape)
         
         input_mask_expanded = drug_mask.unsqueeze(-1).expand(interaction_output.size()).float()
         sum_embeddings = torch.sum(interaction_output * input_mask_expanded, 1)
         sum_mask = torch.clamp(input_mask_expanded.sum(1), min=1e-9)
         interaction_output = sum_embeddings / sum_mask
- 
+        # print("interaction_output after pooling", interaction_output.shape)
+        
+        #TODO: poolingの変更を検討
         target_output = target_output * target_mask.unsqueeze(-1)
         target_output = target_output.sum(dim=1) / target_mask.sum(dim=1).unsqueeze(-1)
+        # target_output = target_output.mean(dim=1)
+        # print("target_output after pooling", target_output.shape)
         
         interaction_output = torch.cat([interaction_output, target_output], dim=1)
+        # print("interaction_output after concat", interaction_output.shape)
         
         output = self.mlp_net(interaction_output)
+        # print("output", output.shape)
+        # print("output", output)
 
         return output, weight
 
@@ -148,7 +170,52 @@ class ChemGLaM(L.LightningModule):
         measures = batch["measures"]
         loss = self.loss(output, measures)
         self.log("val_loss", loss, on_step=False, on_epoch=True, sync_dist=True, prog_bar=True)
-        return loss
+        
+        preds = torch.sigmoid(output) if self.config.task_type == "classification" else output
+        self.validation_outputs.append({"val_loss": loss, "preds": preds, "targets": measures})
+        return {"val_loss": loss, "preds": preds, "targets": measures}
+
+    def on_validation_epoch_end(self):
+        avg_loss = torch.stack([x['val_loss'] for x in self.validation_outputs]).mean()
+        self.log('avg_val_loss', avg_loss, sync_dist=True, prog_bar=True)
+        
+        preds = torch.cat([x['preds'] for x in self.validation_outputs])
+        targets = torch.cat([x['targets'] for x in self.validation_outputs])
+        
+        if self.config.task_type == "classification":
+            roc_auc = roc_auc_score(targets.cpu().numpy(), preds.cpu().numpy())
+            precision, recall, _ = precision_recall_curve(targets.cpu().numpy(), preds.cpu().numpy())
+            pr_auc = auc(recall, precision)
+            self.log('val_roc_auc', roc_auc, sync_dist=True, prog_bar=True)
+            self.log('val_pr_auc', pr_auc, sync_dist=True, prog_bar=True)
+        
+        self.validation_outputs.clear()
+
+    def test_step(self, batch, batch_idx):
+        output, _ = self(batch)
+        measures = batch["measures"]
+        loss = self.loss(output, measures)
+        self.log("test_loss", loss, on_step=False, on_epoch=True, sync_dist=True, prog_bar=True)
+        
+        preds = torch.sigmoid(output) if self.config.task_type == "classification" else output
+        self.test_outputs.append({"test_loss": loss, "preds": preds, "targets": measures})
+        return {"test_loss": loss, "preds": preds, "targets": measures}
+
+    def on_test_epoch_end(self):
+        avg_loss = torch.stack([x['test_loss'] for x in self.test_outputs]).mean()
+        self.log('avg_test_loss', avg_loss, sync_dist=True, prog_bar=True)
+        
+        preds = torch.cat([x['preds'] for x in self.test_outputs])
+        targets = torch.cat([x['targets'] for x in self.test_outputs])
+        
+        if self.config.task_type == "classification":
+            roc_auc = roc_auc_score(targets.cpu().numpy(), preds.cpu().numpy())
+            precision, recall, _ = precision_recall_curve(targets.cpu().numpy(), preds.cpu().numpy())
+            pr_auc = auc(recall, precision)
+            self.log('test_roc_auc', roc_auc, sync_dist=True, prog_bar=True)
+            self.log('test_pr_auc', pr_auc, sync_dist=True, prog_bar=True)
+        
+        self.test_outputs.clear()
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate)
