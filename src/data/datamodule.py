@@ -52,7 +52,7 @@ class DTIDataModule(L.LightningDataModule):
         self.config = config
         self.cache_dir = f"cache/{self.config.experiment_name}"
         os.makedirs(self.cache_dir, exist_ok=True)
-        self.protein_token_cache_file = os.path.join(self.cache_dir, f"protein_features.pt")
+        self.protein_token_cache_file = os.path.join(self.cache_dir, f"protein_tokens.pt")
         self.protein_embedding_cache_file = os.path.join(self.cache_dir, f"protein_embeddings.pt")
         self.stage = None
         
@@ -106,14 +106,13 @@ class DTIDataModule(L.LightningDataModule):
                         protein_embeddings[target_id] = embedding
                 protein_tokens[target_id] = protein_token
             self.protein_tokens = protein_tokens
-            self.protein_embeddings = protein_embeddings
             torch.save(protein_tokens, self.protein_token_cache_file)
-            if self.config.featurization_type == "embedding":    
+            if self.config.featurization_type == "embedding": 
+                self.protein_embeddings = protein_embeddings   
                 torch.save(protein_embeddings, self.protein_embedding_cache_file)
 
     def setup(self, stage: str = None):
         print(f"Loading tokenized dataset from cache")
-        self.protein_features = {}
         self.protein_tokens = torch.load(self.protein_token_cache_file)
         if self.config.featurization_type == "embedding":
             self.protein_embeddings = torch.load(self.protein_embedding_cache_file)
