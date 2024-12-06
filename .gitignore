@@ -1,7 +1,7 @@
 logs/*
 cache/*
 wandb/*
-
+local_data/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
