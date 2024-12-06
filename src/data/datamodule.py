@@ -19,13 +19,16 @@ class DTIPredictionDataset(torch.utils.data.Dataset):
     """
     protein embeddingsを事前に計算しておくためのDataset
     """
-    def __init__(self, df, config, protein_tokens, protein_embeddings=None, target_columns: List[str] = None):
+    def __init__(self, df, config, protein_tokens, 
+                 protein_embeddings=None, stage=None, target_columns: List[str] = None):
         self.df = df
         self.protein_tokens = protein_tokens
         self.protein_embeddings = protein_embeddings
         self.target_columns = target_columns
         self.target_values = self.df[target_columns].values
         self.config = config
+        self.stage = stage
+        self.target_columns = target_columns
         
     def __getitem__(self, index):
         canonical_smiles = self.df.loc[index, 'canonical_smiles']
@@ -36,8 +39,8 @@ class DTIPredictionDataset(torch.utils.data.Dataset):
         else:
             protein_embedding = None
             
-        if self.target_columns is None and self.stage == 'predict':
-            return canonical_smiles, protein_token, protein_embedding, index
+        if self.stage == 'predict':
+            return canonical_smiles, protein_token, protein_embedding, None, index
         else:
             measure = self.target_values[index]
             return canonical_smiles, protein_token, protein_embedding, measure, index
@@ -54,7 +57,6 @@ class DTIDataModule(L.LightningDataModule):
         os.makedirs(self.cache_dir, exist_ok=True)
         self.protein_token_cache_file = os.path.join(self.cache_dir, f"protein_tokens.pt")
         self.protein_embedding_cache_file = os.path.join(self.cache_dir, f"protein_embeddings.pt")
-        self.stage = None
         
         self.protein_tokenizer = AutoTokenizer.from_pretrained(self.config.protein_model_name, trust_remote_code=True)
         self.protein_collator = DataCollatorWithPadding(tokenizer=self.protein_tokenizer)
@@ -105,6 +107,7 @@ class DTIDataModule(L.LightningDataModule):
                         attention_mask.to("cpu")
                         protein_embeddings[target_id] = embedding
                 protein_tokens[target_id] = protein_token
+            self.protein_model.to('cpu')
             self.protein_tokens = protein_tokens
             torch.save(protein_tokens, self.protein_token_cache_file)
             if self.config.featurization_type == "embedding": 
@@ -122,7 +125,8 @@ class DTIDataModule(L.LightningDataModule):
         self.dataset = DTIPredictionDataset(self.df, 
                                             self.config, 
                                             self.protein_tokens, 
-                                            self.protein_embeddings, 
+                                            protein_embeddings=self.protein_embeddings, 
+                                            stage=stage,
                                             target_columns=self.config.target_columns)
         self.stage = stage
         if stage == 'fit':
@@ -133,15 +137,24 @@ class DTIDataModule(L.LightningDataModule):
                 train_indices = split_json['train']
                 valid_indices = split_json['valid']
                 test_indices = split_json['test']
+                if self.config.debug:
+                    train_indices = train_indices[:100]
+                    valid_indices = valid_indices[:100]
+                    test_indices = test_indices[:100]
+                
                 # split dataset
-                self.train_dataset = torch.utils.data.Subset(self.dataset, train_indices)
-                self.val_dataset = torch.utils.data.Subset(self.dataset, valid_indices)
-                self.test_dataset = torch.utils.data.Subset(self.dataset, test_indices)
+                self.train_dataset = Subset(self.dataset, train_indices)
+                self.val_dataset = Subset(self.dataset, valid_indices)
+                self.test_dataset = Subset(self.dataset, test_indices)
             else:  
                 dataset_size = len(self.dataset)
                 train_size = int(self.config.train_ratio * dataset_size)
                 val_size = int(self.config.val_ratio * dataset_size)
                 test_size = dataset_size - train_size - val_size
+                if self.config.debug:
+                    train_size = 100
+                    val_size = 100
+                    test_size = 100
                 # split dataset
                 self.train_dataset, self.val_dataset, self.test_dataset = \
                     random_split(self.dataset, [train_size, val_size, test_size])
@@ -155,7 +168,7 @@ class DTIDataModule(L.LightningDataModule):
     
     def collate_fn(self, batch):
         if self.stage == 'predict':
-            smiles, protein_token, protein_embedding, index = zip(*batch)
+            smiles, protein_token, protein_embedding, _, index = zip(*batch)
         else:
             smiles, protein_token, protein_embedding, measures, index = zip(*batch)
             
@@ -163,10 +176,10 @@ class DTIDataModule(L.LightningDataModule):
         protein_token = self.protein_collator(protein_token)
         
         batch = {"drug_ids": torch.tensor(smi_tokens['input_ids']),
-                    "drug_mask": torch.tensor(smi_tokens['attention_mask']),
-                    "target_ids": protein_token['input_ids'],
-                    "target_mask": protein_token['attention_mask'],
-                    "index": index}
+                "drug_mask": torch.tensor(smi_tokens['attention_mask']),
+                "target_ids": protein_token['input_ids'],
+                "target_mask": protein_token['attention_mask'],
+                "index": index}
         
         if self.stage != "predict":
             measures = np.array(measures)
