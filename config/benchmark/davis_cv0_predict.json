@@ -17,12 +17,11 @@
     "batch_size": 16,
     "num_workers": 8,
     "lora_dropout": 0,
-    "num_epochs": 10,
-    "num_gpus": 1,
+    "num_epochs": 1,
+    "num_gpus": 4,
     "num_classes": 1,
     "seed": 42,
     "task_type": "classification",
     "evidential": false,
-    "save_attention_weight": false,
-    "deterministic_eval": false
+    "save_attention_weight": false
 }

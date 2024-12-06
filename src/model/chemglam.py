@@ -1,6 +1,6 @@
 import lightning as L
 import torch
-from transformers import AutoModel, AutoTokenizer
+from transformers import AutoModel, AutoTokenizer, AutoConfig
 from peft import get_peft_model, LoraConfig, TaskType
 from sklearn.metrics import roc_auc_score, precision_recall_curve, auc
 
@@ -26,9 +26,16 @@ class ChemGLaM(L.LightningModule):
         self.save_hyperparameters(config.to_dict())
 
         self.protein_model_name = config.protein_model_name
-
+        
+        if config.deterministic_eval:
+            self.drug_config = AutoConfig.from_pretrained(
+                "ibm/MoLFormer-XL-both-10pct", trust_remote_code=True, deterministic_eval=True)
+        else:
+            self.drug_config = AutoConfig.from_pretrained(
+                "ibm/MoLFormer-XL-both-10pct", trust_remote_code=True)
         self.drug_encoder = AutoModel.from_pretrained(
-            "ibm/MoLFormer-XL-both-10pct", trust_remote_code=True).train() # MoLFormerはfloat型でないとエラーが出る
+            "ibm/MoLFormer-XL-both-10pct", trust_remote_code=True,
+            config=self.drug_config).train() # MoLFormerはfloat型でないとエラーが出る
         
         if config.featurization_type == "embedding":
             self.target_encoder = None
@@ -110,66 +117,47 @@ class ChemGLaM(L.LightningModule):
         drug_mask = batch["drug_mask"]
         target_ids = batch["target_ids"]
         target_mask = batch["target_mask"]
-        
-        # print("drug_ids", drug_ids.shape)
-        # print("drug_mask", drug_mask.shape)
-        # print("target_ids", target_ids.shape)
-        # print("target_mask", target_mask.shape)
-        
+
         
         drug_output = self.drug_encoder(
             input_ids=drug_ids, attention_mask=drug_mask).last_hidden_state
         
-        # print("drug_output", drug_output.shape)
-        
         if self.target_encoder is not None:
             target_output = self.target_encoder(
-                input_ids=target_ids, attention_mask=target_mask).last_hidden_state
+                input_ids=tåarget_ids, attention_mask=target_mask).last_hidden_state
         else:
             target_output = batch["target_embedding"]
-        
-        # print("target_output", target_output.shape)
-        
+            
         interaction_output, weight = self.cross_attention(
             drug_output, target_output, drug_mask, target_mask)
-        
-        # print("interaction_output", interaction_output.shape)
-        # print("weight", weight.shape)
         
         input_mask_expanded = drug_mask.unsqueeze(-1).expand(interaction_output.size()).float()
         sum_embeddings = torch.sum(interaction_output * input_mask_expanded, 1)
         sum_mask = torch.clamp(input_mask_expanded.sum(1), min=1e-9)
         interaction_output = sum_embeddings / sum_mask
-        # print("interaction_output after pooling", interaction_output.shape)
         
         #TODO: poolingの変更を検討
         target_output = target_output * target_mask.unsqueeze(-1)
         target_output = target_output.sum(dim=1) / target_mask.sum(dim=1).unsqueeze(-1)
-        # target_output = target_output.mean(dim=1)
-        # print("target_output after pooling", target_output.shape)
         
         interaction_output = torch.cat([interaction_output, target_output], dim=1)
-        # print("interaction_output after concat", interaction_output.shape)
         
         output = self.mlp_net(interaction_output)
-        # print("output", output.shape)
-        # print("output", output)
-
         return output, weight
-
     
     def training_step(self, batch, batch_idx):
         output, _ = self(batch)
         measures = batch["measures"]
         loss = self.loss(output, measures)
-        self.log("train_loss", loss, on_step=True, prog_bar=True)
+        self.log("train_loss", loss, on_step=True, prog_bar=True, batch_size=output.size(0))
         return loss
 
     def validation_step(self, batch, batch_idx):
         output, _ = self(batch)
         measures = batch["measures"]
         loss = self.loss(output, measures)
-        self.log("val_loss", loss, on_step=False, on_epoch=True, sync_dist=True, prog_bar=True)
+        self.log("val_loss", loss, on_step=False, on_epoch=True, sync_dist=True, 
+                 batch_size=output.size(0), prog_bar=True)
         
         preds = torch.sigmoid(output) if self.config.task_type == "classification" else output
         self.validation_outputs.append({"val_loss": loss, "preds": preds, "targets": measures})
@@ -188,6 +176,9 @@ class ChemGLaM(L.LightningModule):
             pr_auc = auc(recall, precision)
             self.log('val_roc_auc', roc_auc, sync_dist=True, prog_bar=True)
             self.log('val_pr_auc', pr_auc, sync_dist=True, prog_bar=True)
+        if self.config.task_type == "regression":
+            rmse = torch.sqrt(torch.nn.functional.mse_loss(preds, targets))
+            self.log('val_rmse', rmse, sync_dist=True, prog_bar=True)
         
         self.validation_outputs.clear()
 
@@ -195,7 +186,8 @@ class ChemGLaM(L.LightningModule):
         output, _ = self(batch)
         measures = batch["measures"]
         loss = self.loss(output, measures)
-        self.log("test_loss", loss, on_step=False, on_epoch=True, sync_dist=True, prog_bar=True)
+        self.log("test_loss", loss, on_step=False, on_epoch=True, sync_dist=True, 
+                 batch_size=output.size(0), prog_bar=True)
         
         preds = torch.sigmoid(output) if self.config.task_type == "classification" else output
         self.test_outputs.append({"test_loss": loss, "preds": preds, "targets": measures})
@@ -214,6 +206,9 @@ class ChemGLaM(L.LightningModule):
             pr_auc = auc(recall, precision)
             self.log('test_roc_auc', roc_auc, sync_dist=True, prog_bar=True)
             self.log('test_pr_auc', pr_auc, sync_dist=True, prog_bar=True)
+        if self.config.task_type == "regression":
+            rmse = torch.sqrt(torch.nn.functional.mse_loss(preds, targets))
+            self.log('test_rmse', rmse, sync_dist=True, prog_bar=True)
         
         self.test_outputs.clear()
 
