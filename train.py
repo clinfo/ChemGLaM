@@ -1,4 +1,4 @@
-# Fine-tuning ChemGLaM 
+# Fine-tuning ChemGLaM
 import argparse
 import json
 import torch
@@ -20,15 +20,16 @@ from src.utils.config import Config
 import torch
 torch.set_float32_matmul_precision('medium')
 
+
 def main():
     args = argparse.ArgumentParser()
     args.add_argument("-c", "--config", type=str, default="./config/config_demo.json")
     args = args.parse_args()
 
-    #json_fileからconfigを読み込む
+    # json_fileからconfigを読み込む
     config = Config(args.config)
     seed_everything(config.seed, workers=True)
-    
+
     model = ChemGLaM(config)
     datamodule = DTIDataModule(config)
 
@@ -44,9 +45,9 @@ def main():
     #     patience=5,
     #     mode="min"
     # )
-    
+
     wandb_logger = WandbLogger(project="ChemGLaM", name=config.experiment_name)
-    
+
     trainer = L.Trainer(
         max_epochs=config.num_epochs,
         enable_progress_bar=True,
