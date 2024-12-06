@@ -1,0 +1,28 @@
+{
+    "experiment_name": "davis_cv0",
+    "debug": false,
+    "protein_model_name": "facebook/esm2_t36_3B_UR50D",
+    "learning_rate": 1e-5,
+    "dropout": 0.1,
+    "num_target_encoders_tuned": 0,
+    "featurization_type": "embedding",
+    "dataset_csv_path": "data/davis/cv0/total.csv",
+    "split_json_path": "data/davis/cv0/split.json",
+    "checkpoint_path": "logs/davis_cv0/best_checkpoint.ckpt",
+    "protein_sequence_column": "target_sequence",
+    "drug_smiles_column": "smiles",
+    "target_columns": [
+        "label"
+    ],
+    "batch_size": 16,
+    "num_workers": 8,
+    "lora_dropout": 0,
+    "num_epochs": 10,
+    "num_gpus": 1,
+    "num_classes": 1,
+    "seed": 42,
+    "task_type": "classification",
+    "evidential": false,
+    "save_attention_weight": false,
+    "deterministic_eval": false
+}

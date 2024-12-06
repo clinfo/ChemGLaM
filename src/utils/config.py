@@ -6,8 +6,8 @@ class Config:
         "experiment_name": "demo",
         "learning_rate": 0.001,
         "protein_model_name": "facebook/esm2_t36_3B_UR50D",
-        "num_target_encoders_tuned": 2,
-        "featurized_protein": False,
+        "num_target_encoders_tuned": 0,
+        "featurization_type": "token",
         "lora_alpha": 32,
         "lora_dropout": 0.1,
         "dropout": 0.1,
@@ -25,7 +25,9 @@ class Config:
         "num_classes": 1,
         "seed": 42,
         "task_type": "classification",
-        "evidential": False
+        "evidential": False,
+        "save_attention_weight": False,
+        "deterministic_eval": False,
         }
 
     def __init__(self, json_file):
