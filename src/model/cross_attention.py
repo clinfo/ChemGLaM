@@ -24,7 +24,7 @@ class CrossAttention(nn.Module):
         self.skip_connection = skip_connection
         self.layer_norm = nn.LayerNorm(drug_dim)
 
-    def forward(self, drug, target, drug_mask=None, pro_mask=None):
+    def forward(self, drug, target, drug_mask, pro_mask):
         b, n, _, h = *drug.shape, self.heads
         q = self.to_q(drug).view(b, n, h, -1).transpose(1, 2)
 
@@ -40,17 +40,15 @@ class CrossAttention(nn.Module):
 
         attn = F.softmax(dots, dim=-1)
 
-        if drug_mask is not None:
-            mask = drug_mask.unsqueeze(1)
-            mask = mask.unsqueeze(-1)
-            mask = mask.expand(-1, h, n, target_len)
-            attn = attn.masked_fill(mask == 0, 0)
+        mask = drug_mask.unsqueeze(1)
+        mask = mask.unsqueeze(-1)
+        mask = mask.expand(-1, h, n, target_len)
+        attn = attn.masked_fill(mask == 0, 0)
 
-        if pro_mask is not None:
-            mask = pro_mask.unsqueeze(1)
-            mask = mask.unsqueeze(-2)
-            mask = mask.expand(-1, h, n, target_len)
-            attn = attn.masked_fill(mask == 0, 0)
+        mask = pro_mask.unsqueeze(1)
+        mask = mask.unsqueeze(-2)
+        mask = mask.expand(-1, h, n, target_len)
+        attn = attn.masked_fill(mask == 0, 0)
 
         out = torch.matmul(attn, v)
         out = out.transpose(1, 2).contiguous().view(b, n, -1)

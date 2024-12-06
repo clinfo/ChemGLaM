@@ -1,8 +1,8 @@
-
 import lightning as L
 import torch
-from transformers import AutoModel, AutoTokenizer
+from transformers import AutoModel, AutoTokenizer, AutoConfig
 from peft import get_peft_model, LoraConfig, TaskType
+from sklearn.metrics import roc_auc_score, precision_recall_curve, auc
 
 from src.utils.config import Config
 from src.model.cross_attention import CrossAttention
@@ -26,11 +26,22 @@ class ChemGLaM(L.LightningModule):
         self.save_hyperparameters(config.to_dict())
 
         self.protein_model_name = config.protein_model_name
-
+        
+        if config.deterministic_eval:
+            self.drug_config = AutoConfig.from_pretrained(
+                "ibm/MoLFormer-XL-both-10pct", trust_remote_code=True, deterministic_eval=True)
+        else:
+            self.drug_config = AutoConfig.from_pretrained(
+                "ibm/MoLFormer-XL-both-10pct", trust_remote_code=True)
         self.drug_encoder = AutoModel.from_pretrained(
-            "ibm/MoLFormer-XL-both-10pct", trust_remote_code=True).train() # MoLFormerはfloat型でないとエラーが出る
-        self.target_encoder = AutoModel.from_pretrained(
-            self.protein_model_name).half()
+            "ibm/MoLFormer-XL-both-10pct", trust_remote_code=True,
+            config=self.drug_config).train() # MoLFormerはfloat型でないとエラーが出る
+        
+        if config.featurization_type == "embedding":
+            self.target_encoder = None
+        else:       
+            self.target_encoder = AutoModel.from_pretrained(
+                self.protein_model_name).half()
 
         self.cross_attention = CrossAttention(drug_dim=768,
                                               target_dim=self.protein_dim_table[self.protein_model_name],
@@ -46,6 +57,10 @@ class ChemGLaM(L.LightningModule):
             "_")[1].split("t")[1])  # facebook/esm2_t30_150M_UR50D => 30
         
         self.num_target_encoders_tuned = config.num_target_encoders_tuned
+
+        assert (config.featurization_type != "embedding") or (self.num_target_encoders_tuned < 1), \
+            'LoRA can not be used when featurization_type is "embedding"'
+            
         if config.num_target_encoders_tuned >= 1:
             lora_target_modules = [
                 [f"encoder.layer.{i}.attention.self.query" for i in range(
@@ -72,14 +87,11 @@ class ChemGLaM(L.LightningModule):
                 self.target_encoder, self.lora_config)
             self.target_encoder.print_trainable_parameters()
         else:
-            self.target_encoder.eval()
-            for param in self.target_encoder.parameters():
-                param.requires_grad = False
+            if self.target_encoder is not None:  
+                self.target_encoder.eval()
+                for param in self.target_encoder.parameters():
+                    param.requires_grad = False
                 
-            for name, param in self.target_encoder.named_parameters():
-                print(f"{name}: requires_grad={param.requires_grad}")
-
-        # TODO: Implement configuration for loss function
         if config.task_type == "classification" and not config.evidential:
             self.loss = torch.nn.BCEWithLogitsLoss()
         elif config.task_type == "classification" and config.evidential:
@@ -88,6 +100,8 @@ class ChemGLaM(L.LightningModule):
             self.loss = torch.nn.MSELoss()
     
         self.learning_rate = config.learning_rate
+        self.validation_outputs = []
+        self.test_outputs = []
     
     def set_lora_config(self, model, lora_config: LoraConfig):
         for name, module in model.named_modules():
@@ -98,58 +112,105 @@ class ChemGLaM(L.LightningModule):
         lora_model = get_peft_model(model, lora_config)
         return lora_model
 
-    def forward(self, drug_ids, drug_mask, target_ids, target_mask):
-        drug_output = self.drug_encoder(
-            drug_ids, attention_mask=drug_mask).pooler_output
-        target_output = self.target_encoder(
-            target_ids, attention_mask=target_mask).last_hidden_state[:, 0, :]
-
-        interaction_output, weight = self.cross_attention(
-            drug_output, target_output)
-
-        output = self.mlp_net(interaction_output)
-
-        return output, weight
-    
-    def shared_step(self, batch):
+    def forward(self, batch):
         drug_ids = batch["drug_ids"]
         drug_mask = batch["drug_mask"]
         target_ids = batch["target_ids"]
         target_mask = batch["target_mask"]
-        measures = batch["measures"]
+
         
         drug_output = self.drug_encoder(
             input_ids=drug_ids, attention_mask=drug_mask).last_hidden_state
-        target_output = self.target_encoder(
-            input_ids=target_ids, attention_mask=target_mask).last_hidden_state
         
-        interaction_output, _ = self.cross_attention(
-            drug_output, target_output)
+        if self.target_encoder is not None:
+            target_output = self.target_encoder(
+                input_ids=tåarget_ids, attention_mask=target_mask).last_hidden_state
+        else:
+            target_output = batch["target_embedding"]
+            
+        interaction_output, weight = self.cross_attention(
+            drug_output, target_output, drug_mask, target_mask)
         
         input_mask_expanded = drug_mask.unsqueeze(-1).expand(interaction_output.size()).float()
         sum_embeddings = torch.sum(interaction_output * input_mask_expanded, 1)
         sum_mask = torch.clamp(input_mask_expanded.sum(1), min=1e-9)
         interaction_output = sum_embeddings / sum_mask
- 
+        
+        #TODO: poolingの変更を検討
         target_output = target_output * target_mask.unsqueeze(-1)
         target_output = target_output.sum(dim=1) / target_mask.sum(dim=1).unsqueeze(-1)
         
         interaction_output = torch.cat([interaction_output, target_output], dim=1)
         
         output = self.mlp_net(interaction_output)
-        
-        loss = self.loss(output, measures)
-        return loss
+        return output, weight
     
     def training_step(self, batch, batch_idx):
-        loss = self.shared_step(batch)
-        self.log("train_loss", loss, on_step=True, prog_bar=True)
+        output, _ = self(batch)
+        measures = batch["measures"]
+        loss = self.loss(output, measures)
+        self.log("train_loss", loss, on_step=True, prog_bar=True, batch_size=output.size(0))
         return loss
 
     def validation_step(self, batch, batch_idx):
-        loss = self.shared_step(batch)
-        self.log("val_loss", loss, on_step=False, on_epoch=True, sync_dist=True, prog_bar=True)
-        return loss
+        output, _ = self(batch)
+        measures = batch["measures"]
+        loss = self.loss(output, measures)
+        self.log("val_loss", loss, on_step=False, on_epoch=True, sync_dist=True, 
+                 batch_size=output.size(0), prog_bar=True)
+        
+        preds = torch.sigmoid(output) if self.config.task_type == "classification" else output
+        self.validation_outputs.append({"val_loss": loss, "preds": preds, "targets": measures})
+        return {"val_loss": loss, "preds": preds, "targets": measures}
+
+    def on_validation_epoch_end(self):
+        avg_loss = torch.stack([x['val_loss'] for x in self.validation_outputs]).mean()
+        self.log('avg_val_loss', avg_loss, sync_dist=True, prog_bar=True)
+        
+        preds = torch.cat([x['preds'] for x in self.validation_outputs])
+        targets = torch.cat([x['targets'] for x in self.validation_outputs])
+        
+        if self.config.task_type == "classification":
+            roc_auc = roc_auc_score(targets.cpu().numpy(), preds.cpu().numpy())
+            precision, recall, _ = precision_recall_curve(targets.cpu().numpy(), preds.cpu().numpy())
+            pr_auc = auc(recall, precision)
+            self.log('val_roc_auc', roc_auc, sync_dist=True, prog_bar=True)
+            self.log('val_pr_auc', pr_auc, sync_dist=True, prog_bar=True)
+        if self.config.task_type == "regression":
+            rmse = torch.sqrt(torch.nn.functional.mse_loss(preds, targets))
+            self.log('val_rmse', rmse, sync_dist=True, prog_bar=True)
+        
+        self.validation_outputs.clear()
+
+    def test_step(self, batch, batch_idx):
+        output, _ = self(batch)
+        measures = batch["measures"]
+        loss = self.loss(output, measures)
+        self.log("test_loss", loss, on_step=False, on_epoch=True, sync_dist=True, 
+                 batch_size=output.size(0), prog_bar=True)
+        
+        preds = torch.sigmoid(output) if self.config.task_type == "classification" else output
+        self.test_outputs.append({"test_loss": loss, "preds": preds, "targets": measures})
+        return {"test_loss": loss, "preds": preds, "targets": measures}
+
+    def on_test_epoch_end(self):
+        avg_loss = torch.stack([x['test_loss'] for x in self.test_outputs]).mean()
+        self.log('avg_test_loss', avg_loss, sync_dist=True, prog_bar=True)
+        
+        preds = torch.cat([x['preds'] for x in self.test_outputs])
+        targets = torch.cat([x['targets'] for x in self.test_outputs])
+        
+        if self.config.task_type == "classification":
+            roc_auc = roc_auc_score(targets.cpu().numpy(), preds.cpu().numpy())
+            precision, recall, _ = precision_recall_curve(targets.cpu().numpy(), preds.cpu().numpy())
+            pr_auc = auc(recall, precision)
+            self.log('test_roc_auc', roc_auc, sync_dist=True, prog_bar=True)
+            self.log('test_pr_auc', pr_auc, sync_dist=True, prog_bar=True)
+        if self.config.task_type == "regression":
+            rmse = torch.sqrt(torch.nn.functional.mse_loss(preds, targets))
+            self.log('test_rmse', rmse, sync_dist=True, prog_bar=True)
+        
+        self.test_outputs.clear()
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate)
