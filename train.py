@@ -13,9 +13,9 @@ from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.callbacks import ModelCheckpoint, EarlyStopping
 from lightning import seed_everything
 
-from src.model.chemglam import ChemGLaM
-from src.data.datamodule import DTIDataModule
-from src.utils.config import Config
+from chemglam.model.chemglam import ChemGLaM
+from chemglam.data.datamodule import DTIDataModule
+from chemglam.utils.config import Config
 
 import torch
 torch.set_float32_matmul_precision('medium')
