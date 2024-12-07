@@ -1,8 +1,8 @@
 {
-    "experiment_name": "bindingdb_cv0",
+    "experiment_name": "bindingdb_cv0_lr3e-5_bs8",
     "debug": false,
     "protein_model_name": "facebook/esm2_t36_3B_UR50D",
-    "learning_rate": 1e-5,
+    "learning_rate": 3e-5,
     "dropout": 0.1,
     "num_target_encoders_tuned": 0,
     "featurization_type": "embedding",
