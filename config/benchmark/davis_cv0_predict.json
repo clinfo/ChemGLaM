@@ -2,6 +2,7 @@
     "experiment_name": "davis_cv0",
     "debug": false,
     "protein_model_name": "facebook/esm2_t36_3B_UR50D",
+    "deterministic_eval": true,
     "learning_rate": 1e-5,
     "dropout": 0.1,
     "num_target_encoders_tuned": 0,

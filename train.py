@@ -57,6 +57,7 @@ def main():
         callbacks=[checkpoint_callback],
         # callbacks=[checkpoint_callback, early_stopping_callback],
         logger=wandb_logger,
+        num_sanity_val_steps=0,
     )
 
     trainer.fit(model, datamodule)
