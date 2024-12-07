@@ -60,7 +60,7 @@ The following is the example of the command for finetuning ChemGLaM with CPI dat
 python train.py -c /path/to/config.json
 ```
 
-### Finetuning for BindingDB with Evidential Deep Learning (EDL)
+### Finetuning for classification with Evidential Deep Learning (EDL)
 
 Coming Soon.
 <!-- If you want to use the [Evidential Deep Learning (EDL)](https://doi.org/10.48550/arXiv.1806.01768) for the finetuning, you can use the following script.
@@ -85,15 +85,17 @@ bash run_predict_classification.sh
 
 Coming Soon.
 
-<!-- You can also run the script with Docker. First, build the Docker image with the following command.
+You can also run the script with Docker. First, build the Docker image with the following command.
 ```bash
-cd ChemGLaM_dev
+cd ChemGLaM_huggingface
 docker build --no-cache -t chemglam .
 ```
-After building the Docker image, you can run the script with the following command. You can replace the `run_bindingdb.sh` with the script you want to run.
+After building the Docker image, you can run the script with the following command. You can replace the `python train.py -c config/benchmark/bindingdb_cv0.json` with the script you want to run. Here is an example of how to execute the training script for a specific configuration:
 ```bash
-docker run -it --rm -v $(pwd):/workspace chemglam ./run_bindingdb.sh
-``` -->
+docker run --gpus all -it --rm -u `id -u`:`id -g` \
+-v $(pwd):/workspace chemglam \
+python train.py -c config/benchmark/bindingdb_cv0.json
+```
 
 ## Contact
 - Takuto Koyama: koyama.takuto.82j[at]st.kyoto-u.ac.jp
