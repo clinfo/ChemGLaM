@@ -6,11 +6,11 @@
 ## Table of Contents <!-- omit in toc -->
 - [ChemGLaM: Chemical Genomics Language Models for Compound-Protein Interaction Prediction](#chemglam-chemical-genomics-language-models-for-compound-protein-interaction-prediction)
   - [Description](#description)
-  - [Requirements](#requirements)
   - [Directory Structure](#directory-structure)
+  - [Environment Setup](#environment-setup)
   - [Usage](#usage)
     - [Finetuning for CPI datasets](#finetuning-for-cpi-datasets)
-    - [Finetuning for BindingDB with Evidential Deep Learning (EDL)](#finetuning-for-bindingdb-with-evidential-deep-learning-edl)
+    - [Finetuning for classification with Evidential Deep Learning (EDL)](#finetuning-for-classification-with-evidential-deep-learning-edl)
     - [Inference with the finetuned model](#inference-with-the-finetuned-model)
     - [Run with Docker](#run-with-docker)
   - [Contact](#contact)
@@ -24,19 +24,6 @@ ChemGLaM is a large language model for Compound-Protein Interaction Prediction.
 
 ![ChemGLaM: Fig1](./figures/figure1.png)
 
-## Requirements
-
-- python == 
-- pytorch ==
-- transformers == 
-- pytorch-fast-transformers == 
-- pytorch-lightning == 
-- biopython == 
-- rdkit 
-- pandas
-- scikit-learn
-- debugpy
-
 ## Directory Structure
 
 <!-- ```
@@ -49,6 +36,27 @@ ChemGLaM is a large language model for Compound-Protein Interaction Prediction.
 ├── LICENSE        : License file
 └── README.md      : This file
 ``` -->
+
+## Environment Setup
+
+To set up the environment for this project, follow these steps:
+
+1. Create a new conda environment named `chemglam` with Python 3.11:
+    ```bash
+    conda create -n chemglam -y python=3.11
+    ```
+2. Activate the environment:
+    ```bash 
+    conda activate chemglam
+    ```
+3. Install the required dependencies:
+    ```bash
+    pip install -e .
+    ```
+4. Install RDKit (version 2024.9.2) from the conda-forge channel:
+    ```bash
+    conda install -c conda-forge rdkit=2024.9.2
+    ```
 
 ## Usage
 
@@ -72,24 +80,22 @@ bash run_bindingdb_edl.sh
 
 ### Inference with the finetuned model
 
-Coming Soon.
-<!-- You can use the inference script by replacing the `--seed_path` with the path to the finetuned model.
+Coming Soon.  
+You can use the inference script by specifying the `--checkpoint_path` with the path to the finetuned model and setting `deterministic_eval=True` for reproducible results.
 
 ```bash
-
-cd dti_finetune
-bash run_predict_classification.sh
-``` -->
+python predict.py -c /path/to/config.json --deterministic_eval=True
+```
 
 ### Run with Docker
 
-Coming Soon.
-
 You can also run the script with Docker. First, build the Docker image with the following command.
+
 ```bash
 cd ChemGLaM_huggingface
 docker build --no-cache -t chemglam .
 ```
+
 After building the Docker image, you can run the script with the following command. You can replace the `python train.py -c config/benchmark/bindingdb_cv0.json` with the script you want to run. Here is an example of how to execute the training script for a specific configuration:
 ```bash
 docker run --gpus all -it --rm -u `id -u`:`id -g` \
