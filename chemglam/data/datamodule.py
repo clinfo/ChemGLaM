@@ -12,7 +12,7 @@ import json
 from tqdm import tqdm
 from typing import List
 
-from src.utils.config import Config
+from chemglam.utils.config import Config
 
 
 class DTIPredictionDataset(torch.utils.data.Dataset):

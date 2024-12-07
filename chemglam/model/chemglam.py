@@ -4,9 +4,9 @@ from transformers import AutoModel, AutoTokenizer, AutoConfig
 from peft import get_peft_model, LoraConfig, TaskType
 from sklearn.metrics import roc_auc_score, precision_recall_curve, auc
 
-from src.utils.config import Config
-from src.model.cross_attention import CrossAttention
-from src.model.layers import MLPNet
+from chemglam.utils.config import Config
+from chemglam.model.cross_attention import CrossAttention
+from chemglam.model.layers import MLPNet
 
 class ChemGLaM(L.LightningModule):
 
@@ -37,11 +37,17 @@ class ChemGLaM(L.LightningModule):
             "ibm/MoLFormer-XL-both-10pct", trust_remote_code=True,
             config=self.drug_config).train() # MoLFormerはfloat型でないとエラーが出る
         
+        self.smi_tokenizer = AutoTokenizer.from_pretrained(
+            "ibm/MoLFormer-XL-both-10pct", trust_remote_code=True)
+        
         if config.featurization_type == "embedding":
             self.target_encoder = None
         else:       
             self.target_encoder = AutoModel.from_pretrained(
                 self.protein_model_name).half()
+            
+        self.protein_tokenizer = AutoTokenizer.from_pretrained(
+            self.protein_model_name)
 
         self.cross_attention = CrossAttention(drug_dim=768,
                                               target_dim=self.protein_dim_table[self.protein_model_name],
@@ -124,7 +130,7 @@ class ChemGLaM(L.LightningModule):
         
         if self.target_encoder is not None:
             target_output = self.target_encoder(
-                input_ids=tåarget_ids, attention_mask=target_mask).last_hidden_state
+                input_ids=target_ids, attention_mask=target_mask).last_hidden_state
         else:
             target_output = batch["target_embedding"]
             
@@ -215,3 +221,17 @@ class ChemGLaM(L.LightningModule):
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate)
         return optimizer
+    
+    def predict(self, smiles, sequence):
+        self.eval()
+        with torch.no_grad():
+            drug_input = self.smi_tokenizer(smiles, return_tensors="pt", padding=True)
+            target_input = self.protein_tokenizer(sequence, return_tensors="pt", padding=True)
+            
+            batch = {"drug_ids": drug_input["input_ids"].to(self.device),
+                    "drug_mask": drug_input["attention_mask"].to(self.device),
+                    "target_ids": target_input["input_ids"].to(self.device),
+                    "target_mask": target_input["attention_mask"].to(self.device)
+                    }
+            output, _ = self(batch)
+            return torch.sigmoid(output) if self.config.task_type == "classification" else output
