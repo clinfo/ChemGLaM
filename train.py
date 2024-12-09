@@ -4,7 +4,6 @@ import json
 import torch
 import lightning as L
 import pandas as pd
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from datetime import timedelta
@@ -13,9 +12,9 @@ from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.callbacks import ModelCheckpoint, EarlyStopping
 from lightning import seed_everything
 
-from src.model.chemglam import ChemGLaM
-from src.data.datamodule import DTIDataModule
-from src.utils.config import Config
+from chemglam.model.chemglam import ChemGLaM
+from chemglam.data.datamodule import DTIDataModule
+from chemglam.utils.config import Config
 
 import torch
 torch.set_float32_matmul_precision('medium')
@@ -62,7 +61,12 @@ def main():
     )
 
     trainer.fit(model, datamodule)
-    trainer.test(model, dataloaders=datamodule.test_dataloader())
+    
+    config.deterministic_eval = True
+    print(config)
+    best_model = ChemGLaM.load_from_checkpoint(checkpoint_callback.best_model_path, config=config)
+    
+    trainer.test(best_model, dataloaders=datamodule.test_dataloader())
 
 
 if __name__ == "__main__":
