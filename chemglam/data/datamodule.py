@@ -53,7 +53,7 @@ class DTIDataModule(L.LightningDataModule):
     def __init__(self, config: Config):
         super().__init__()
         self.config = config
-        self.cache_dir = f"cache/{self.config.experiment_name}"
+        self.cache_dir = f"cache/{self.config.cache_dir}"
         os.makedirs(self.cache_dir, exist_ok=True)
         self.protein_token_cache_file = os.path.join(self.cache_dir, f"protein_tokens.pt")
         self.protein_embedding_cache_file = os.path.join(self.cache_dir, f"protein_embeddings.pt")
@@ -76,12 +76,18 @@ class DTIDataModule(L.LightningDataModule):
         df['canonical_smiles'] = df['smiles'].apply(lambda smi: self.normalize_smiles(smi, canonical=True, isomeric=False))
         df['replaced_sequence'] = df['target_sequence'].apply(lambda seq: " ".join(list(re.sub(r"[UZOB]", "X", seq))))
         
+        len_df = len(df)
+        
         df_good = df.dropna(subset=['canonical_smiles', 'replaced_sequence'])
+        
+        original_indices = df_good.index.tolist()
         
         len_new = len(df_good)
         self.df = df_good.reset_index(drop=True)
-        print('Dropped {} invalid smiles and sequence'.format(len(self.df) - len_new))
+        print('Dropped {} invalid smiles and sequence'.format(len_new - len_df))
         print("Length of dataset:", len(self.df))
+        
+        self.index_mapping = {old:new for new, old in enumerate(original_indices)}
 
          
     def prepare_data(self):        
@@ -134,9 +140,9 @@ class DTIDataModule(L.LightningDataModule):
                 print(f"Loading split from {self.config.split_json_path}")
                 with open(self.config.split_json_path, 'r') as f:
                     split_json = json.load(f)
-                train_indices = split_json['train']
-                valid_indices = split_json['valid']
-                test_indices = split_json['test']
+                train_indices = [self.index_mapping[i] for i in split_json['train'] if i in self.index_mapping]
+                valid_indices = [self.index_mapping[i] for i in split_json['valid'] if i in self.index_mapping]
+                test_indices = [self.index_mapping[i] for i in split_json['test'] if i in self.index_mapping]
                 if self.config.debug:
                     train_indices = train_indices[:100]
                     valid_indices = valid_indices[:100]

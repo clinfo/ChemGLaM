@@ -1,8 +1,9 @@
 {
     "experiment_name": "davis_cv4",
+    "cache_dir": "davis_cv4",
     "debug": false,
     "protein_model_name": "facebook/esm2_t36_3B_UR50D",
-    "learning_rate": 1e-5,
+    "learning_rate": 5e-6,
     "dropout": 0.1,
     "num_target_encoders_tuned": 0,
     "featurization_type": "embedding",
@@ -15,7 +16,7 @@
         "label"
     ],
     "batch_size": 16,
-    "num_workers": 8,
+    "num_workers": 4,
     "lora_dropout": 0,
     "num_epochs": 10,
     "num_gpus": 1,
