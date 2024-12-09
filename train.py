@@ -4,7 +4,6 @@ import json
 import torch
 import lightning as L
 import pandas as pd
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from datetime import timedelta
@@ -62,7 +61,12 @@ def main():
     )
 
     trainer.fit(model, datamodule)
-    trainer.test(model, dataloaders=datamodule.test_dataloader())
+    
+    config.deterministic_eval = True
+    print(config)
+    best_model = ChemGLaM.load_from_checkpoint(checkpoint_callback.best_model_path, config=config)
+    
+    trainer.test(best_model, dataloaders=datamodule.test_dataloader())
 
 
 if __name__ == "__main__":

@@ -1,19 +1,19 @@
 {
-    "experiment_name": "bindingdb_cv1",
-    "cache_dir": "bindingdb_cv1",
+    "experiment_name": "pdbbind_cv1_test",
+    "cache_dir": "pdbbind_cv1",
     "debug": false,
     "protein_model_name": "facebook/esm2_t36_3B_UR50D",
     "learning_rate": 5e-6,
     "dropout": 0.1,
     "num_target_encoders_tuned": 0,
     "featurization_type": "embedding",
-    "dataset_csv_path": "data/bindingdb/cv1/total.csv",
-    "split_json_path": "data/bindingdb/cv1/split.json",
-    "checkpoint_path": "logs/bindingdb_cv1/best_checkpoint.ckpt",
+    "dataset_csv_path": "data/pdbbind/cv1/test.csv",
+    "split_json_path": "data/pdbbind/cv1/split.json",
+    "checkpoint_path": "logs/pdbbind_cv1/best_checkpoint.ckpt",
     "protein_sequence_column": "target_sequence",
     "drug_smiles_column": "smiles",
     "target_columns": [
-        "label"
+        "pK"
     ],
     "batch_size": 16,
     "num_workers": 4,
@@ -22,8 +22,8 @@
     "num_gpus": 1,
     "num_classes": 1,
     "seed": 42,
-    "task_type": "classification",
+    "task_type": "regression",
     "evidential": false,
     "save_attention_weight": false,
-    "deterministic_eval": false
+    "deterministic_eval": true
 }

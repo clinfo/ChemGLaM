@@ -4,7 +4,6 @@ import json
 import pandas as pd 
 import torch
 import lightning as L
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from datetime import timedelta
@@ -27,6 +26,7 @@ def main():
 
     #json_fileからconfigを読み込む
     config = Config(args.config)
+    print(config)
     seed_everything(config.seed, workers=True)
     
     model = ChemGLaM.load_from_checkpoint(config.checkpoint_path, config=config)
@@ -59,7 +59,8 @@ def main():
         return 1 / (1 + torch.exp(-x))
     
     predictions = torch.cat(predictions, dim=0)
-    predictions = sigmoid(predictions)
+    if config.task_type == "classification":
+        predictions = sigmoid(predictions)       
     
     if config.save_attention_weight:
         torch.save(attention_weights, f"./logs/{config.experiment_name}/attention_weights.pt")
