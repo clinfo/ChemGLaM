@@ -20,41 +20,24 @@ class CrossAttention(nn.Module):
         self.to_q = nn.Linear(drug_dim, heads * dim_head, bias=False)
         self.to_k = nn.Linear(target_dim, heads * dim_head, bias=False)
         self.to_v = nn.Linear(target_dim, heads * dim_head, bias=False)
+        self.multihead_attn = nn.MultiheadAttention(embed_dim=heads*dim_head, num_heads=heads, bias=False, batch_first=True)
         self.to_out = nn.Linear(heads * dim_head, drug_dim)
         self.skip_connection = skip_connection
         self.layer_norm = nn.LayerNorm(drug_dim)
 
     def forward(self, drug, target, drug_mask, pro_mask):
         b, n, _, h = *drug.shape, self.heads
-        q = self.to_q(drug).view(b, n, h, -1).transpose(1, 2)
-
-        target = target.float()
+        
+        q = self.to_q(drug).view(b, n, -1)
         target_len = target.shape[1]
-        try:
-            k = self.to_k(target).view(b, target_len, h, -1).transpose(1, 2)
-            v = self.to_v(target).view(b, target_len, h, -1).transpose(1, 2)
-        except:
-            print('target:', target.shape)
+        k = self.to_k(target).view(b, target_len, -1)
+        v = self.to_v(target).view(b, target_len, -1)
+        
+        key_padding_mask = ~pro_mask.bool()        
+        attn_output, attn_weights = self.multihead_attn(q, k, v, key_padding_mask=key_padding_mask)
 
-        dots = torch.matmul(q, k.transpose(-2, -1)) * self.scale
-
-        attn = F.softmax(dots, dim=-1)
-
-        mask = drug_mask.unsqueeze(1)
-        mask = mask.unsqueeze(-1)
-        mask = mask.expand(-1, h, n, target_len)
-        attn = attn.masked_fill(mask == 0, 0)
-
-        mask = pro_mask.unsqueeze(1)
-        mask = mask.unsqueeze(-2)
-        mask = mask.expand(-1, h, n, target_len)
-        attn = attn.masked_fill(mask == 0, 0)
-
-        out = torch.matmul(attn, v)
-        out = out.transpose(1, 2).contiguous().view(b, n, -1)
-
-        out = self.to_out(out)
+        out = self.to_out(attn_output)
         if self.skip_connection:
             out = self.layer_norm(out + drug)
-
-        return out, attn
+            
+        return out, attn_weights

@@ -69,16 +69,15 @@ class DTIDataModule(L.LightningDataModule):
         
     def load_csv(self, path):
         df = pd.read_csv(path)
-        df = df[['smiles', 'target_sequence', *self.config.target_columns]]
-        df = df.dropna(subset=['smiles', 'target_sequence', *self.config.target_columns])
-        # target_sequence に IDを付与する
-        df['target_id'] = df['target_sequence'].factorize()[0]
+        df = df[['smiles', 'target_sequence', "target_id", *self.config.target_columns]]
+        df = df.dropna(subset=['smiles', 'target_sequence', "target_id", *self.config.target_columns])
+
         df['canonical_smiles'] = df['smiles'].apply(lambda smi: self.normalize_smiles(smi, canonical=True, isomeric=False))
         df['replaced_sequence'] = df['target_sequence'].apply(lambda seq: " ".join(list(re.sub(r"[UZOB]", "X", seq))))
         
         len_df = len(df)
         
-        df_good = df.dropna(subset=['canonical_smiles', 'replaced_sequence'])
+        df_good = df.dropna(subset=['canonical_smiles', 'replaced_sequence', "target_id"])
         
         original_indices = df_good.index.tolist()
         
@@ -142,28 +141,22 @@ class DTIDataModule(L.LightningDataModule):
                     split_json = json.load(f)
                 train_indices = [self.index_mapping[i] for i in split_json['train'] if i in self.index_mapping]
                 valid_indices = [self.index_mapping[i] for i in split_json['valid'] if i in self.index_mapping]
-                test_indices = [self.index_mapping[i] for i in split_json['test'] if i in self.index_mapping]
                 if self.config.debug:
                     train_indices = train_indices[:100]
                     valid_indices = valid_indices[:100]
-                    test_indices = test_indices[:100]
                 
                 # split dataset
                 self.train_dataset = Subset(self.dataset, train_indices)
                 self.val_dataset = Subset(self.dataset, valid_indices)
-                self.test_dataset = Subset(self.dataset, test_indices)
             else:  
                 dataset_size = len(self.dataset)
-                train_size = int(self.config.train_ratio * dataset_size)
                 val_size = int(self.config.val_ratio * dataset_size)
-                test_size = dataset_size - train_size - val_size
+                train_size = dataset_size - val_size
                 if self.config.debug:
                     train_size = 100
                     val_size = 100
-                    test_size = 100
                 # split dataset
-                self.train_dataset, self.val_dataset, self.test_dataset = \
-                    random_split(self.dataset, [train_size, val_size, test_size])
+                self.train_dataset, self.val_dataset = random_split(self.dataset, [train_size, val_size])
         elif stage == 'test':
             self.test_dataset = self.dataset
         elif stage == 'predict':

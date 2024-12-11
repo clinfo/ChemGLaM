@@ -33,14 +33,15 @@ def main():
     datamodule = DTIDataModule(config)
 
     checkpoint_callback = ModelCheckpoint(
-        monitor="val_loss",
+        monitor="avg_val_loss",
         mode="min",
         save_top_k=1,
         dirpath=f"./logs/{config.experiment_name}",
-        filename="best_checkpoint"
+        filename="best_checkpoint",
+        enable_version_counter=False,
     )
     # early_stopping_callback = EarlyStopping(
-    #     monitor="val_loss",
+    #     monitor="avg_val_loss",
     #     patience=5,
     #     mode="min"
     # )
@@ -62,12 +63,5 @@ def main():
 
     trainer.fit(model, datamodule)
     
-    config.deterministic_eval = True
-    print(config)
-    best_model = ChemGLaM.load_from_checkpoint(checkpoint_callback.best_model_path, config=config)
-    
-    trainer.test(best_model, dataloaders=datamodule.test_dataloader())
-
-
 if __name__ == "__main__":
     main()
