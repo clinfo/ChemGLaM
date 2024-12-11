@@ -162,8 +162,6 @@ class ChemGLaM(L.LightningModule):
         output, _ = self(batch)
         measures = batch["measures"]
         loss = self.loss(output, measures)
-        self.log("val_loss", loss, on_step=False, on_epoch=True, sync_dist=True, 
-                 batch_size=output.size(0), prog_bar=True)
         
         preds = torch.sigmoid(output) if self.config.task_type == "classification" else output
         self.validation_outputs.append({"val_loss": loss, "preds": preds, "targets": measures})
@@ -192,8 +190,6 @@ class ChemGLaM(L.LightningModule):
         output, _ = self(batch)
         measures = batch["measures"]
         loss = self.loss(output, measures)
-        self.log("test_loss", loss, on_step=False, on_epoch=True, sync_dist=True, 
-                 batch_size=output.size(0), prog_bar=True)
         
         preds = torch.sigmoid(output) if self.config.task_type == "classification" else output
         self.test_outputs.append({"test_loss": loss, "preds": preds, "targets": measures})
@@ -221,6 +217,9 @@ class ChemGLaM(L.LightningModule):
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate)
         return optimizer
+    
+    def predict_step(self, batch, batch_idx, dataloader_idx=0):
+        return self(batch)
     
     def predict(self, smiles, sequence):
         self.eval()

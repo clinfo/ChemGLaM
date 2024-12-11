@@ -33,9 +33,6 @@ def main():
     
     datamodule = DTIDataModule(config)
     
-    datamodule.setup("predict")
-    dataloader = datamodule.predict_dataloader()
-
     trainer = L.Trainer(
         enable_progress_bar=True,
         accelerator="gpu",
@@ -44,7 +41,10 @@ def main():
         devices=1,
         )
     
-    result = trainer.predict(model, datamodule)
+    datamodule.prepare_data()
+    if config.target_columns is not None:
+        trainer.test(model, ckpt_path=config.checkpoint_path, datamodule=datamodule, verbose=True)
+    result = trainer.predict(model, ckpt_path=config.checkpoint_path, datamodule=datamodule)
     
     predictions = []
     attention_weights = []
@@ -57,7 +57,7 @@ def main():
                 
     def sigmoid(x):
         return 1 / (1 + torch.exp(-x))
-    
+         
     predictions = torch.cat(predictions, dim=0)
     if config.task_type == "classification":
         predictions = sigmoid(predictions)       

@@ -1,6 +1,6 @@
 {
     "experiment_name": "metz_cv1_test",
-    "cache_dir": "metz_cv1",
+    "cache_dir": "metz_cv1_test",
     "debug": false,
     "protein_model_name": "facebook/esm2_t36_3B_UR50D",
     "learning_rate": 5e-6,
@@ -8,7 +8,7 @@
     "num_target_encoders_tuned": 0,
     "featurization_type": "embedding",
     "dataset_csv_path": "data/metz/cv1/test.csv",
-    "split_json_path": "data/metz/cv1/split.json",
+    "split_json_path": null,
     "checkpoint_path": "logs/metz_cv1/best_checkpoint.ckpt",
     "protein_sequence_column": "target_sequence",
     "drug_smiles_column": "smiles",
