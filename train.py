@@ -61,7 +61,7 @@ def main():
         num_sanity_val_steps=0,
     )
 
-    trainer.fit(model, datamodule)
+    trainer.fit(model, datamodule, ckpt_path=config.checkpoint_path,)
     
 if __name__ == "__main__":
     main()

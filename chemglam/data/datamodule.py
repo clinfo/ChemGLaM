@@ -3,6 +3,7 @@ from torch.utils.data import random_split, Subset, DataLoader
 import pandas as pd
 import torch
 from transformers import AutoTokenizer, EsmModel, DataCollatorWithPadding
+import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 from rdkit import Chem
 import numpy as np
@@ -25,8 +26,9 @@ class DTIPredictionDataset(torch.utils.data.Dataset):
         self.protein_tokens = protein_tokens
         self.protein_embeddings = protein_embeddings
         self.target_columns = target_columns
-        self.target_values = self.df[target_columns].values
         self.config = config
+        if self.config.target_columns is not None:    
+            self.target_values = self.df[target_columns].values
         self.stage = stage
         self.target_columns = target_columns
         
@@ -69,10 +71,16 @@ class DTIDataModule(L.LightningDataModule):
         
     def load_csv(self, path):
         df = pd.read_csv(path)
-        df = df[['smiles', 'target_sequence', "target_id", *self.config.target_columns]]
-        df = df.dropna(subset=['smiles', 'target_sequence', "target_id", *self.config.target_columns])
-
-        df['canonical_smiles'] = df['smiles'].apply(lambda smi: self.normalize_smiles(smi, canonical=True, isomeric=False))
+        if self.config.target_columns is not None:
+            df = df[['smiles', 'target_sequence', "target_id", *self.config.target_columns]]
+        else:
+            df = df[["smiles",  "target_sequence", "target_id"]]
+        df = df.dropna()
+        
+        if self.config.canonicalize_smiles:    
+            df['canonical_smiles'] = df['smiles'].apply(lambda smi: self.normalize_smiles(smi, canonical=True, isomeric=False))
+        else:
+            df['canonical_smiles'] = df['smiles']
         df['replaced_sequence'] = df['target_sequence'].apply(lambda seq: " ".join(list(re.sub(r"[UZOB]", "X", seq))))
         
         len_df = len(df)
@@ -88,7 +96,6 @@ class DTIDataModule(L.LightningDataModule):
         
         self.index_mapping = {old:new for new, old in enumerate(original_indices)}
 
-         
     def prepare_data(self):        
         # if not exists, tokenize and save cache
         if not os.path.exists(self.protein_token_cache_file):
@@ -182,7 +189,10 @@ class DTIDataModule(L.LightningDataModule):
         
         if self.stage != "predict":
             measures = np.array(measures)
-            batch["measures"] = torch.tensor(measures, dtype=torch.float).view(-1, self.config.num_classes)
+            if self.config.evidential:
+                batch["measures"] = F.one_hot(torch.tensor(measures, dtype=torch.long), num_classes=self.config.num_classes).squeeze(1)
+            else:
+                batch["measures"] = torch.tensor(measures, dtype=torch.float).view(-1, self.config.num_classes)
         
         if self.config.featurization_type == "embedding":
             protein_embedding = pad_sequence(list(protein_embedding), batch_first=True, padding_value=0)      
