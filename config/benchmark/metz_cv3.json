@@ -1,5 +1,5 @@
 {
-    "experiment_name": "metz_cv3",
+    "experiment_name": "metz_cv3_v2",
     "cache_dir": "metz_cv3",
     "debug": false,
     "protein_model_name": "facebook/esm2_t36_3B_UR50D",
@@ -9,7 +9,7 @@
     "featurization_type": "embedding",
     "dataset_csv_path": "data/metz/cv3/train_valid.csv",
     "split_json_path": "data/metz/cv3/train_valid_split.json",
-    "checkpoint_path": "logs/metz_cv3/best_checkpoint.ckpt",
+    "checkpoint_path": null,
     "protein_sequence_column": "target_sequence",
     "drug_smiles_column": "smiles",
     "target_columns": [

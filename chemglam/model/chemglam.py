@@ -3,10 +3,12 @@ import torch
 from transformers import AutoModel, AutoTokenizer, AutoConfig
 from peft import get_peft_model, LoraConfig, TaskType
 from sklearn.metrics import roc_auc_score, precision_recall_curve, auc
+import torch.nn.functional as F
 
 from chemglam.utils.config import Config
 from chemglam.model.cross_attention import CrossAttention
 from chemglam.model.layers import MLPNet
+from chemglam.criterion.evidential_loss import EvidentialLoss
 
 class ChemGLaM(L.LightningModule):
 
@@ -101,7 +103,8 @@ class ChemGLaM(L.LightningModule):
         if config.task_type == "classification" and not config.evidential:
             self.loss = torch.nn.BCEWithLogitsLoss()
         elif config.task_type == "classification" and config.evidential:
-            self.loss = EvidentialLoss()
+            self.loss = EvidentialLoss(num_classes=config.num_classes, annealing_step=2, device="cuda")
+            print("Evidential Loss is used")
         elif config.task_type == "regression":
             self.loss = torch.nn.MSELoss()
     
@@ -123,7 +126,7 @@ class ChemGLaM(L.LightningModule):
         drug_mask = batch["drug_mask"]
         target_ids = batch["target_ids"]
         target_mask = batch["target_mask"]
-
+        
         
         drug_output = self.drug_encoder(
             input_ids=drug_ids, attention_mask=drug_mask).last_hidden_state
@@ -162,17 +165,31 @@ class ChemGLaM(L.LightningModule):
         output, _ = self(batch)
         measures = batch["measures"]
         loss = self.loss(output, measures)
-        
-        preds = torch.sigmoid(output) if self.config.task_type == "classification" else output
-        self.validation_outputs.append({"val_loss": loss, "preds": preds, "targets": measures})
-        return {"val_loss": loss, "preds": preds, "targets": measures}
+        self.validation_outputs.append({"val_loss": loss, "preds": output, "targets": measures})        
+        return {"val_loss": loss, "preds": output, "targets": measures}
 
     def on_validation_epoch_end(self):
         avg_loss = torch.stack([x['val_loss'] for x in self.validation_outputs]).mean()
         self.log('avg_val_loss', avg_loss, sync_dist=True, prog_bar=True)
         
         preds = torch.cat([x['preds'] for x in self.validation_outputs])
+        
+        if self.config.task_type == "classification" and not self.config.evidential:
+            if self.config.num_classes == 1:
+                preds = torch.sigmoid(preds)
+            else:
+                preds = torch.softmax(preds, dim=1)
+        if self.config.task_type == "classification" and self.config.evidential:
+            evidence = F.softplus(preds)
+            alpha = evidence + 1
+            
+            uncertainty = (2 / torch.sum(alpha, dim=1, keepdim=True))
+            preds = alpha / torch.sum(alpha, dim=1, keepdim=True)
+            preds = preds[:, 1].unsqueeze(1)
+            
         targets = torch.cat([x['targets'] for x in self.validation_outputs])
+        if self.config.task_type == "classification" and self.config.evidential:
+            targets = targets[:, 1].unsqueeze(1)
         
         if self.config.task_type == "classification":
             roc_auc = roc_auc_score(targets.cpu().numpy(), preds.cpu().numpy())
@@ -191,16 +208,31 @@ class ChemGLaM(L.LightningModule):
         measures = batch["measures"]
         loss = self.loss(output, measures)
         
-        preds = torch.sigmoid(output) if self.config.task_type == "classification" else output
-        self.test_outputs.append({"test_loss": loss, "preds": preds, "targets": measures})
-        return {"test_loss": loss, "preds": preds, "targets": measures}
+        self.test_outputs.append({"test_loss": loss, "preds": output, "targets": measures})
+        return {"test_loss": loss, "preds": output, "targets": measures}
 
     def on_test_epoch_end(self):
         avg_loss = torch.stack([x['test_loss'] for x in self.test_outputs]).mean()
         self.log('avg_test_loss', avg_loss, sync_dist=True, prog_bar=True)
         
         preds = torch.cat([x['preds'] for x in self.test_outputs])
+        
+        if self.config.task_type == "classification" and not self.config.evidential:
+            if self.config.num_classes == 1:
+                preds = torch.sigmoid(preds)
+            else:
+                preds = torch.softmax(preds, dim=1)
+        if self.config.task_type == "classification" and self.config.evidential:
+            evidence = F.softplus(preds)
+            alpha = evidence + 1
+            
+            uncertainty = (2 / torch.sum(alpha, dim=1, keepdim=True))
+            preds = alpha / torch.sum(alpha, dim=1, keepdim=True)
+            preds = preds[:, 1].unsqueeze(1)
+            
         targets = torch.cat([x['targets'] for x in self.test_outputs])
+        if self.config.task_type == "classification" and self.config.evidential:
+            targets = targets[:, 1].unsqueeze(1)
         
         if self.config.task_type == "classification":
             roc_auc = roc_auc_score(targets.cpu().numpy(), preds.cpu().numpy())
@@ -222,8 +254,6 @@ class ChemGLaM(L.LightningModule):
         return self(batch)
     
     def predict(self, smiles, sequence):
-        self.eval()
-        with torch.no_grad():
             drug_input = self.smi_tokenizer(smiles, return_tensors="pt", padding=True)
             target_input = self.protein_tokenizer(sequence, return_tensors="pt", padding=True)
             
@@ -233,4 +263,19 @@ class ChemGLaM(L.LightningModule):
                     "target_mask": target_input["attention_mask"].to(self.device)
                     }
             output, _ = self(batch)
-            return torch.sigmoid(output) if self.config.task_type == "classification" else output
+            
+            if self.config.task_type == "classification" and not self.config.evidential:
+                if self.config.num_classes == 1:
+                    output = torch.sigmoid(output)
+                else:
+                    output = torch.softmax(output, dim=1)
+            if self.config.task_type == "classification" and self.config.evidential:
+                evidence = F.softplus(output)
+                alpha = evidence + 1
+                
+                uncertainty = (2 / torch.sum(alpha, dim=1, keepdim=True))
+                output = alpha / torch.sum(alpha, dim=1, keepdim=True)
+                output = output[:, 1].unsqueeze(1)
+                return {"preds": output, "uncertainty": uncertainty}
+            
+            return {"preds": output}
