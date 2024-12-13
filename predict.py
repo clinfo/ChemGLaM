@@ -33,9 +33,6 @@ def main():
     
     datamodule = DTIDataModule(config)
     
-    datamodule.setup("predict")
-    dataloader = datamodule.predict_dataloader()
-
     trainer = L.Trainer(
         enable_progress_bar=True,
         accelerator="gpu",
@@ -44,7 +41,10 @@ def main():
         devices=1,
         )
     
-    result = trainer.predict(model, datamodule)
+    datamodule.prepare_data()
+    if config.target_columns is not None:
+        trainer.test(model, ckpt_path=config.checkpoint_path, datamodule=datamodule, verbose=True)
+    result = trainer.predict(model, ckpt_path=config.checkpoint_path, datamodule=datamodule)
     
     predictions = []
     attention_weights = []
@@ -57,10 +57,23 @@ def main():
                 
     def sigmoid(x):
         return 1 / (1 + torch.exp(-x))
-    
+         
     predictions = torch.cat(predictions, dim=0)
-    if config.task_type == "classification":
-        predictions = sigmoid(predictions)       
+    
+    if config.task_type == "classification" and not config.evidential:
+        if config.num_classes == 1:
+            predictions = sigmoid(predictions)
+        else:
+            predictions = F.softmax(predictions, dim=1)
+    elif config.task_type == "classification" and config.evidential:
+        evidence = F.softplus(predictions)
+        alpha = evidence + 1 
+        
+        uncertainty = 2 / torch.sum(alpha, dim=1, keepdim=True)
+        
+        predictions = alpha / torch.sum(alpha, dim=1, keepdim=True)
+        predictions = predictions[:, 1]
+        
     
     if config.save_attention_weight:
         torch.save(attention_weights, f"./logs/{config.experiment_name}/attention_weights.pt")

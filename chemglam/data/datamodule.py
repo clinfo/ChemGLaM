@@ -3,6 +3,7 @@ from torch.utils.data import random_split, Subset, DataLoader
 import pandas as pd
 import torch
 from transformers import AutoTokenizer, EsmModel, DataCollatorWithPadding
+import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 from rdkit import Chem
 import numpy as np
@@ -25,8 +26,9 @@ class DTIPredictionDataset(torch.utils.data.Dataset):
         self.protein_tokens = protein_tokens
         self.protein_embeddings = protein_embeddings
         self.target_columns = target_columns
-        self.target_values = self.df[target_columns].values
         self.config = config
+        if self.config.target_columns is not None:    
+            self.target_values = self.df[target_columns].values
         self.stage = stage
         self.target_columns = target_columns
         
@@ -69,16 +71,21 @@ class DTIDataModule(L.LightningDataModule):
         
     def load_csv(self, path):
         df = pd.read_csv(path)
-        df = df[['smiles', 'target_sequence', *self.config.target_columns]]
-        df = df.dropna(subset=['smiles', 'target_sequence', *self.config.target_columns])
-        # target_sequence に IDを付与する
-        df['target_id'] = df['target_sequence'].factorize()[0]
-        df['canonical_smiles'] = df['smiles'].apply(lambda smi: self.normalize_smiles(smi, canonical=True, isomeric=False))
+        if self.config.target_columns is not None:
+            df = df[['smiles', 'target_sequence', "target_id", *self.config.target_columns]]
+        else:
+            df = df[["smiles",  "target_sequence", "target_id"]]
+        df = df.dropna()
+        
+        if self.config.canonicalize_smiles:    
+            df['canonical_smiles'] = df['smiles'].apply(lambda smi: self.normalize_smiles(smi, canonical=True, isomeric=False))
+        else:
+            df['canonical_smiles'] = df['smiles']
         df['replaced_sequence'] = df['target_sequence'].apply(lambda seq: " ".join(list(re.sub(r"[UZOB]", "X", seq))))
         
         len_df = len(df)
         
-        df_good = df.dropna(subset=['canonical_smiles', 'replaced_sequence'])
+        df_good = df.dropna(subset=['canonical_smiles', 'replaced_sequence', "target_id"])
         
         original_indices = df_good.index.tolist()
         
@@ -89,7 +96,6 @@ class DTIDataModule(L.LightningDataModule):
         
         self.index_mapping = {old:new for new, old in enumerate(original_indices)}
 
-         
     def prepare_data(self):        
         # if not exists, tokenize and save cache
         if not os.path.exists(self.protein_token_cache_file):
@@ -142,28 +148,22 @@ class DTIDataModule(L.LightningDataModule):
                     split_json = json.load(f)
                 train_indices = [self.index_mapping[i] for i in split_json['train'] if i in self.index_mapping]
                 valid_indices = [self.index_mapping[i] for i in split_json['valid'] if i in self.index_mapping]
-                test_indices = [self.index_mapping[i] for i in split_json['test'] if i in self.index_mapping]
                 if self.config.debug:
                     train_indices = train_indices[:100]
                     valid_indices = valid_indices[:100]
-                    test_indices = test_indices[:100]
                 
                 # split dataset
                 self.train_dataset = Subset(self.dataset, train_indices)
                 self.val_dataset = Subset(self.dataset, valid_indices)
-                self.test_dataset = Subset(self.dataset, test_indices)
             else:  
                 dataset_size = len(self.dataset)
-                train_size = int(self.config.train_ratio * dataset_size)
                 val_size = int(self.config.val_ratio * dataset_size)
-                test_size = dataset_size - train_size - val_size
+                train_size = dataset_size - val_size
                 if self.config.debug:
                     train_size = 100
                     val_size = 100
-                    test_size = 100
                 # split dataset
-                self.train_dataset, self.val_dataset, self.test_dataset = \
-                    random_split(self.dataset, [train_size, val_size, test_size])
+                self.train_dataset, self.val_dataset = random_split(self.dataset, [train_size, val_size])
         elif stage == 'test':
             self.test_dataset = self.dataset
         elif stage == 'predict':
@@ -189,7 +189,10 @@ class DTIDataModule(L.LightningDataModule):
         
         if self.stage != "predict":
             measures = np.array(measures)
-            batch["measures"] = torch.tensor(measures, dtype=torch.float).view(-1, self.config.num_classes)
+            if self.config.evidential:
+                batch["measures"] = F.one_hot(torch.tensor(measures, dtype=torch.long), num_classes=self.config.num_classes).squeeze(1)
+            else:
+                batch["measures"] = torch.tensor(measures, dtype=torch.float).view(-1, self.config.num_classes)
         
         if self.config.featurization_type == "embedding":
             protein_embedding = pad_sequence(list(protein_embedding), batch_first=True, padding_value=0)      
