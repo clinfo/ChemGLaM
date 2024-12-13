@@ -1,29 +1,31 @@
 {
-    "experiment_name": "davis_cv4_v2_test_predict",
-    "cache_dir": "davis_cv4_test",
+    "experiment_name": "chembl_train",
+    "cache_dir": "chembl_train",
     "debug": false,
+    "canonicalize_smiles": false,
     "protein_model_name": "facebook/esm2_t36_3B_UR50D",
-    "deterministic_eval": true,
     "learning_rate": 5e-6,
     "dropout": 0.1,
+    "val_ratio": 0.05,
     "num_target_encoders_tuned": 0,
     "featurization_type": "embedding",
-    "dataset_csv_path": "data/davis/cv4/test.csv",
+    "dataset_csv_path": "local_data/chembl_1%_v4/chembl_34_activity_classification_t_1u_v4.csv",
     "split_json_path": null,
-    "checkpoint_path": "logs/davis_cv4_v2/best_checkpoint.ckpt",
+    "checkpoint_path": null,
     "protein_sequence_column": "target_sequence",
     "drug_smiles_column": "smiles",
     "target_columns": [
-        "label"
+        "t_1u"
     ],
     "batch_size": 16,
     "num_workers": 4,
     "lora_dropout": 0,
-    "num_epochs": 10,
-    "num_gpus": 1,
-    "num_classes": 1,
+    "num_epochs": 20,
+    "num_gpus": 4,
+    "num_classes": 2,
     "seed": 42,
     "task_type": "classification",
-    "evidential": false,
-    "save_attention_weight": false
+    "evidential": true,
+    "save_attention_weight": false,
+    "deterministic_eval": false
 }

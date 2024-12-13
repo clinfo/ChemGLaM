@@ -12,9 +12,7 @@
     "checkpoint_path": "logs/metz_cv4/best_checkpoint.ckpt",
     "protein_sequence_column": "target_sequence",
     "drug_smiles_column": "smiles",
-    "target_columns": [
-        "pKi"
-    ],
+    "target_columns": null,
     "batch_size": 16,
     "num_workers": 4,
     "lora_dropout": 0,

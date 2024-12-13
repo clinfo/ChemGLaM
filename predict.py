@@ -59,8 +59,21 @@ def main():
         return 1 / (1 + torch.exp(-x))
          
     predictions = torch.cat(predictions, dim=0)
-    if config.task_type == "classification":
-        predictions = sigmoid(predictions)       
+    
+    if config.task_type == "classification" and not config.evidential:
+        if config.num_classes == 1:
+            predictions = sigmoid(predictions)
+        else:
+            predictions = F.softmax(predictions, dim=1)
+    elif config.task_type == "classification" and config.evidential:
+        evidence = F.softplus(predictions)
+        alpha = evidence + 1 
+        
+        uncertainty = 2 / torch.sum(alpha, dim=1, keepdim=True)
+        
+        predictions = alpha / torch.sum(alpha, dim=1, keepdim=True)
+        predictions = predictions[:, 1]
+        
     
     if config.save_attention_weight:
         torch.save(attention_weights, f"./logs/{config.experiment_name}/attention_weights.pt")
