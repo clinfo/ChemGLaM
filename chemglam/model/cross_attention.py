@@ -20,7 +20,10 @@ class CrossAttention(nn.Module):
         self.to_q = nn.Linear(drug_dim, heads * dim_head, bias=False)
         self.to_k = nn.Linear(target_dim, heads * dim_head, bias=False)
         self.to_v = nn.Linear(target_dim, heads * dim_head, bias=False)
-        self.multihead_attn = nn.MultiheadAttention(embed_dim=heads*dim_head, num_heads=heads, bias=False, batch_first=True)
+        self.multihead_attn = nn.MultiheadAttention(embed_dim=heads*dim_head, 
+                                                    num_heads=heads,
+                                                    bias=False, 
+                                                    batch_first=True)
         self.to_out = nn.Linear(heads * dim_head, drug_dim)
         self.skip_connection = skip_connection
         self.layer_norm = nn.LayerNorm(drug_dim)
