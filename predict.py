@@ -79,6 +79,8 @@ def main():
         torch.save(attention_weights, f"./logs/{config.experiment_name}/attention_weights.pt")
     
     df_pred = pd.DataFrame(predictions.cpu().numpy(), columns=["pred"])
+    if config.task_type == "classification" and config.evidential:
+        df_pred["uncertainty"] = uncertainty.cpu().numpy()
     
     if config.target_columns is not None:
         df_pred[config.target_columns] = datamodule.dataset.df[config.target_columns].values

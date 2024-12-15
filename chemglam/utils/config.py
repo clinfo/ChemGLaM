@@ -16,6 +16,7 @@ class Config:
         "lora_r": 4,
         "dataset_csv_path": "data/demo_dataset.csv",
         "protein_sequence_column": "target_sequence",
+        "target_id_column": "target_id",
         "drug_smiles_column": "smiles",
         "target_columns": ["IC50"],
         "train_ratio":0.9,

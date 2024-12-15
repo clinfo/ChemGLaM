@@ -34,7 +34,7 @@ class DTIPredictionDataset(torch.utils.data.Dataset):
         
     def __getitem__(self, index):
         canonical_smiles = self.df.loc[index, 'canonical_smiles']
-        target_id = self.df.loc[index, 'target_id']
+        target_id = self.df.loc[index, self.config.target_id_column]
         protein_token = self.protein_tokens[target_id]
         if self.config.featurization_type == "embedding":
             protein_embedding = self.protein_embeddings[target_id]
@@ -72,9 +72,9 @@ class DTIDataModule(L.LightningDataModule):
     def load_csv(self, path):
         df = pd.read_csv(path)
         if self.config.target_columns is not None:
-            df = df[['smiles', 'target_sequence', "target_id", *self.config.target_columns]]
+            df = df[['smiles', 'target_sequence', self.config.target_id_column, *self.config.target_columns]]
         else:
-            df = df[["smiles",  "target_sequence", "target_id"]]
+            df = df[["smiles",  "target_sequence", self.config.target_id_column]]
         df = df.dropna()
         
         if self.config.canonicalize_smiles:    
@@ -85,7 +85,7 @@ class DTIDataModule(L.LightningDataModule):
         
         len_df = len(df)
         
-        df_good = df.dropna(subset=['canonical_smiles', 'replaced_sequence', "target_id"])
+        df_good = df.dropna(subset=['canonical_smiles', 'replaced_sequence', self.config.target_id_column])
         
         original_indices = df_good.index.tolist()
         
@@ -102,9 +102,9 @@ class DTIDataModule(L.LightningDataModule):
             protein_tokens = {}
             if self.config.featurization_type == "embedding":    
                 protein_embeddings = {}
-            df_unique_target = self.df.drop_duplicates(subset=['target_id']).reset_index(drop=True)
+            df_unique_target = self.df.drop_duplicates(subset=[self.config.target_id_column]).reset_index(drop=True)
             for i in tqdm(range(len(df_unique_target))):
-                target_id, target_sequence = df_unique_target.loc[i, 'target_id'], df_unique_target.loc[i, 'replaced_sequence']
+                target_id, target_sequence = df_unique_target.loc[i, self.config.target_id_column], df_unique_target.loc[i, 'replaced_sequence']
                 protein_token = self.protein_tokenizer(target_sequence, max_length=2050, truncation=True)
                 if self.config.featurization_type == "embedding":
                     with torch.no_grad():

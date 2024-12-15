@@ -1,29 +1,29 @@
 {
-    "experiment_name": "davis_cv0_edl",
-    "cache_dir": "davis_cv0_edl",
+    "experiment_name": "pdbbind_random_cv0",
+    "cache_dir": "pdbbind_random_cv0",
     "debug": false,
     "protein_model_name": "facebook/esm2_t36_3B_UR50D",
     "learning_rate": 5e-6,
     "dropout": 0.1,
     "num_target_encoders_tuned": 0,
     "featurization_type": "embedding",
-    "dataset_csv_path": "data/davis/cv0/train_valid.csv",
-    "split_json_path": "data/davis/cv0/train_valid_split.json",
+    "dataset_csv_path": "local_data/pdbbind_random/cv0/train_valid.csv",
+    "split_json_path": "local_data/pdbbind_random/cv0/train_valid_split.json",
     "checkpoint_path": null,
     "protein_sequence_column": "target_sequence",
+    "target_id_column": "pdb_id",
     "drug_smiles_column": "smiles",
     "target_columns": [
-        "label"
+        "pK"
     ],
     "batch_size": 16,
     "num_workers": 4,
-    "lora_dropout": 0,
     "num_epochs": 10,
     "num_gpus": 1,
-    "num_classes": 2,
+    "num_classes": 1,
     "seed": 42,
-    "task_type": "classification",
-    "evidential": true,
+    "task_type": "regression",
+    "evidential": false,
     "save_attention_weight": false,
     "deterministic_eval": false
 }
