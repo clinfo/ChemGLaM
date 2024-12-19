@@ -91,7 +91,11 @@ class DTIDataModule(L.LightningDataModule):
         
         len_new = len(df_good)
         self.df = df_good.reset_index(drop=True)
-        print('Dropped {} invalid smiles and sequence'.format(len_new - len_df))
+        
+        if len_df != len_new:
+            print("Saving cleaned dataframe")
+            self.df.to_csv(os.path.join(self.cache_dir, "df_processed.csv"), index=False)
+        print('Dropped {} invalid smiles and sequence'.format(len_df - len_new))
         print("Length of dataset:", len(self.df))
         
         self.index_mapping = {old:new for new, old in enumerate(original_indices)}
@@ -128,9 +132,9 @@ class DTIDataModule(L.LightningDataModule):
 
     def setup(self, stage: str = None):
         print(f"Loading tokenized dataset from cache")
-        self.protein_tokens = torch.load(self.protein_token_cache_file)
+        self.protein_tokens = torch.load(self.protein_token_cache_file, weights_only=False)
         if self.config.featurization_type == "embedding":
-            self.protein_embeddings = torch.load(self.protein_embedding_cache_file)
+            self.protein_embeddings = torch.load(self.protein_embedding_cache_file, weights_only=False)
         else:
             self.protein_embeddings = None
             

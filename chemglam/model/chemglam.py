@@ -145,7 +145,6 @@ class ChemGLaM(L.LightningModule):
         sum_mask = torch.clamp(input_mask_expanded.sum(1), min=1e-9)
         interaction_output = sum_embeddings / sum_mask
         
-        #TODO: poolingの変更を検討
         target_output = target_output * target_mask.unsqueeze(-1)
         target_output = target_output.sum(dim=1) / target_mask.sum(dim=1).unsqueeze(-1)
         
