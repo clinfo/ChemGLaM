@@ -15,7 +15,6 @@ class CrossAttention(nn.Module):
         self.drug_dim = drug_dim
         self.target_dim = target_dim
         self.heads = heads
-        self.scale = dim_head ** -0.5
 
         self.to_q = nn.Linear(drug_dim, heads * dim_head, bias=False)
         self.to_k = nn.Linear(target_dim, heads * dim_head, bias=False)
@@ -37,7 +36,7 @@ class CrossAttention(nn.Module):
         v = self.to_v(target).view(b, target_len, -1)
         
         key_padding_mask = ~pro_mask.bool()        
-        attn_output, attn_weights = self.multihead_attn(q, k, v, key_padding_mask=key_padding_mask)
+        attn_output, attn_weights = self.multihead_attn(q, k, v, key_padding_mask=key_padding_mask, average_attn_weights=False)
 
         out = self.to_out(attn_output)
         if self.skip_connection:

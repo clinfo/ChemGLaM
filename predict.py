@@ -74,7 +74,6 @@ def main():
         predictions = alpha / torch.sum(alpha, dim=1, keepdim=True)
         predictions = predictions[:, 1]
         
-    
     if config.save_attention_weight:
         torch.save(attention_weights, f"./logs/{config.experiment_name}/attention_weights.pt")
     
