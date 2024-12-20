@@ -35,9 +35,15 @@ class ChemGLaM(L.LightningModule):
         else:
             self.drug_config = AutoConfig.from_pretrained(
                 "ibm/MoLFormer-XL-both-10pct", trust_remote_code=True)
-        self.drug_encoder = AutoModel.from_pretrained(
-            "ibm/MoLFormer-XL-both-10pct", trust_remote_code=True,
-            config=self.drug_config).train() # MoLFormerはfloat型でないとエラーが出る
+            
+        if config.deterministic_eval:
+            self.drug_encoder = AutoModel.from_pretrained(
+                "ibm/MoLFormer-XL-both-10pct", trust_remote_code=True,
+                config=self.drug_config).eval() # MoLFormerはfloat型でないとエラーが出る
+        else:      
+            self.drug_encoder = AutoModel.from_pretrained(
+                "ibm/MoLFormer-XL-both-10pct", trust_remote_code=True,
+                config=self.drug_config).train() # MoLFormerはfloat型でないとエラーが出る
         
         self.smi_tokenizer = AutoTokenizer.from_pretrained(
             "ibm/MoLFormer-XL-both-10pct", trust_remote_code=True)
@@ -54,8 +60,8 @@ class ChemGLaM(L.LightningModule):
         self.cross_attention = CrossAttention(drug_dim=768,
                                               target_dim=self.protein_dim_table[self.protein_model_name],
                                               heads=8,
-                                              dim_head=96,
-                                              skip_connection=True)
+                                              dim_head=96
+                                              )
 
         self.mlp_net = MLPNet(emb_dim=768+self.protein_dim_table[self.protein_model_name],
                               num_classes=config.num_classes, 

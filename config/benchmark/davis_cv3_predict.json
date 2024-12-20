@@ -1,6 +1,6 @@
 {
-    "experiment_name": "davis_cv3_v2_test_predict",
-    "cache_dir": "davis_cv3_test",
+    "experiment_name": "davis_cv3_scratch_attn_valid_predict",
+    "cache_dir": "davis_cv3_valid",
     "debug": false,
     "protein_model_name": "facebook/esm2_t36_3B_UR50D",
     "deterministic_eval": true,
@@ -8,9 +8,9 @@
     "dropout": 0.1,
     "num_target_encoders_tuned": 0,
     "featurization_type": "embedding",
-    "dataset_csv_path": "data/davis/cv3/test.csv",
+    "dataset_csv_path": "data/davis/cv3/valid.csv",
     "split_json_path": null,
-    "checkpoint_path": "logs/davis_cv3_v2/best_checkpoint.ckpt",
+    "checkpoint_path": "logs/davis_cv3_scratch_attn/best_checkpoint.ckpt",
     "protein_sequence_column": "target_sequence",
     "drug_smiles_column": "smiles",
     "target_columns": [

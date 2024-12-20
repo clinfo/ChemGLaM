@@ -91,7 +91,10 @@ class DTIDataModule(L.LightningDataModule):
         
         len_new = len(df_good)
         self.df = df_good.reset_index(drop=True)
-        print('Dropped {} invalid smiles and sequence'.format(len_new - len_df))
+        if len_df != len_new:
+            os.makedirs(os.path.join("logs", self.config.experiment_name), exist_ok=True)
+            self.df.to_csv(os.path.join("logs", self.config.experiment_name, "df_processed.csv"), index=False)
+        print('Dropped {} invalid smiles and sequence'.format(len_df - len_new))
         print("Length of dataset:", len(self.df))
         
         self.index_mapping = {old:new for new, old in enumerate(original_indices)}
