@@ -1,5 +1,5 @@
 {
-    "experiment_name": "bindingdb_cv4_v2",
+    "experiment_name": "bindingdb_cv4_scratch_attn",
     "cache_dir": "bindingdb_cv4",
     "debug": false,
     "protein_model_name": "facebook/esm2_t36_3B_UR50D",
