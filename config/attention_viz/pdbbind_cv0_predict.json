@@ -1,5 +1,5 @@
 {
-    "experiment_name": "pdbbind_random_cv0_scratch_attn_test_bs16",
+    "experiment_name": "pdbbind_random_cv0_scratch_attn_test",
     "cache_dir": "pdbbind_random_cv0_test",
     "debug": false,
     "protein_model_name": "facebook/esm2_t36_3B_UR50D",

@@ -15,7 +15,6 @@ class CrossAttention(nn.Module):
         self.drug_dim = drug_dim
         self.target_dim = target_dim
         self.heads = heads
-        
         self.scale = dim_head ** -0.5
 
         self.to_q = nn.Linear(drug_dim, heads * dim_head, bias=False)

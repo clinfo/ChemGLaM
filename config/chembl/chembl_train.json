@@ -1,5 +1,5 @@
 {
-    "experiment_name": "chembl_train",
+    "experiment_name": "chembl_train_scratch_attn",
     "cache_dir": "chembl_train",
     "debug": false,
     "canonicalize_smiles": false,
