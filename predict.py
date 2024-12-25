@@ -12,6 +12,7 @@ from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.callbacks import ModelCheckpoint, EarlyStopping
 from lightning import seed_everything
 import gc
+import os
 
 from chemglam.model.chemglam import ChemGLaM
 from chemglam.data.datamodule import DTIDataModule
