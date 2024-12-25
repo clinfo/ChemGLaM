@@ -25,7 +25,6 @@ def main():
     args.add_argument("-c", "--config", type=str, default="./config/config_demo.json")
     args = args.parse_args()
 
-    # json_fileからconfigを読み込む
     config = Config(args.config)
     seed_everything(config.seed, workers=True)
 
@@ -40,11 +39,6 @@ def main():
         filename="best_checkpoint",
         enable_version_counter=False,
     )
-    # early_stopping_callback = EarlyStopping(
-    #     monitor="avg_val_loss",
-    #     patience=5,
-    #     mode="min"
-    # )
 
     wandb_logger = WandbLogger(project="ChemGLaM", name=config.experiment_name)
 
@@ -56,7 +50,6 @@ def main():
         default_root_dir=f"./logs/{config.experiment_name}",
         devices=config.num_gpus,
         callbacks=[checkpoint_callback],
-        # callbacks=[checkpoint_callback, early_stopping_callback],
         logger=wandb_logger,
         num_sanity_val_steps=0,
     )
