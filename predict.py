@@ -11,6 +11,7 @@ from lightning.pytorch.strategies import DDPStrategy
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.callbacks import ModelCheckpoint, EarlyStopping
 from lightning import seed_everything
+import gc
 
 from chemglam.model.chemglam import ChemGLaM
 from chemglam.data.datamodule import DTIDataModule
@@ -23,6 +24,10 @@ torch.set_float32_matmul_precision('medium')
 def predict(config):
     print(config)
     seed_everything(config.seed, workers=True)
+    
+    if os.path.exists(f"./logs/{config.experiment_name}/prediction.csv"):
+        print(f"Prediction already exists for {config.experiment_name}")
+        return
     
     model = ChemGLaM.load_from_checkpoint(config.checkpoint_path, config=config)
     
