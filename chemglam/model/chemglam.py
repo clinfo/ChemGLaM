@@ -19,6 +19,7 @@ class ChemGLaM(L.LightningModule):
         "facebook/esm2_t30_150M_UR50D": 640,
         "facebook/esm2_t12_35M_UR50D": 480,
         "facebook/esm2_t6_8M_UR50D": 320,
+        "Rostlab/prot_t5_xl_uniref50": 1024,
     }
 
     def __init__(self, config: Config):

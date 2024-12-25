@@ -79,6 +79,10 @@ def predict(config):
     if config.target_columns is not None:
         df_pred[config.target_columns] = datamodule.dataset.df[config.target_columns].values
     df_pred.to_csv(f"./logs/{config.experiment_name}/prediction.csv", index=False)
+    
+    del model, datamodule, trainer, predictions, attention_weights, result
+    torch.cuda.empty_cache()
+    gc.collect()
 
 
 def main():
@@ -96,7 +100,10 @@ def main():
         config.cache_dir = f"{config.cache_dir}/split_{args.split_id}/{uniprot_id}"
         config.dataset_csv_path = f"local_data/large_cpi/split_{args.split_id}/{uniprot_id}.csv"
         predict(config)
-    
+        
+        del config
+        torch.cuda.empty_cache()
+        gc.collect()
 
 if __name__ == "__main__":
     main()
