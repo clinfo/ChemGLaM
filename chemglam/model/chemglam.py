@@ -257,7 +257,12 @@ class ChemGLaM(L.LightningModule):
         return optimizer
     
     def predict_step(self, batch, batch_idx, dataloader_idx=0):
-        return self(batch)
+        if self.config.save_attention_weight:
+            output, weight = self(batch)
+            return output, weight
+        else:
+            output, _ = self(batch)
+            return output, None
     
     def predict(self, smiles, sequence):
             drug_input = self.smi_tokenizer(smiles, return_tensors="pt", padding=True)

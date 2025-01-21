@@ -47,7 +47,6 @@ def predict(config):
         trainer.test(model, ckpt_path=config.checkpoint_path, datamodule=datamodule, verbose=True)
     result = trainer.predict(model, ckpt_path=config.checkpoint_path, datamodule=datamodule)
     
-    
     predictions = []
     attention_weights = []
     for res in result:
@@ -78,6 +77,11 @@ def predict(config):
         
     if config.save_attention_weight:
         torch.save(attention_weights, f"./logs/{config.experiment_name}/attention_weights.pt")
+
+    print("attention_weights", attention_weights)
+
+    # attention などを早めに del する、と思ってたけど、attention weight ないわ
+    del attention_weights, trainer, result
     
     df_pred = pd.DataFrame(predictions.cpu().numpy(), columns=["pred"])
     if config.task_type == "classification" and config.evidential:
@@ -87,26 +91,29 @@ def predict(config):
         df_pred[config.target_columns] = datamodule.dataset.df[config.target_columns].values
     df_pred.to_csv(f"./logs/{config.experiment_name}/prediction.csv", index=False)
     
-    del model, datamodule, trainer, predictions, attention_weights, result
+    del model, datamodule, predictions, df_pred
     torch.cuda.empty_cache()
     gc.collect()
 
 
 def main():
     args = argparse.ArgumentParser()
-    args.add_argument("-c", "--config", type=str, default="./config/config_demo.json")
+    args.add_argument("-c", "--config", type=str, default="./config/ohno/ohno.json")
     args.add_argument("-i", "--split_id", type=str, default=0)
     args = args.parse_args()
     
-    with open(f"local_data/large_cpi/split_{args.split_id}/protein_entry.txt", "r") as f:
+    with open(f"local_data/ohno_lib/split_{args.split_id}/protein_entry.txt", "r") as f:
         uniprot_ids = f.read().splitlines()
 
     for uniprot_id in uniprot_ids: 
         config = Config(args.config)
         config.experiment_name = f"{config.experiment_name}/split_{args.split_id}/{uniprot_id}"
         config.cache_dir = f"{config.cache_dir}/split_{args.split_id}/{uniprot_id}"
-        config.dataset_csv_path = f"local_data/large_cpi/split_{args.split_id}/{uniprot_id}.csv"
-        predict(config)
+        config.dataset_csv_path = f"local_data/ohno_lib/split_{args.split_id}/{uniprot_id}.csv"
+        if not os.path.isfile(f"logs/{config.experiment_name}/prediction.csv"):
+            predict(config)
+        else:
+            print(f'{uniprot_id} has been already predicted')
         
         del config
         torch.cuda.empty_cache()
