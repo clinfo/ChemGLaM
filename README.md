@@ -1,6 +1,5 @@
 # ChemGLaM: Chemical Genomics Language Models for Compound-Protein Interaction Prediction
 
-**Authors**: Takuto Koyama, Hayato Tsumura, Shigeyuki Matsumoto, Ryunosuke Okita, Ryosuke Kojima, and Yasushi Okuno
 
 ---
 ## Table of Contents <!-- omit in toc -->
@@ -22,20 +21,27 @@
 ## Description
 ChemGLaM is a large language model for Compound-Protein Interaction Prediction.
 
-![ChemGLaM: Fig1](./figures/figure1.png)
+![ChemGLaM: Fig1](./figures/chemglam_workflow.png)
 
 ## Directory Structure
 
-<!-- ```
+```
 .
-├── data           : Directory for datasets 
-├── dti_finetune   : Directory for finetuning
-├── dti_result     : Output directory (created by running the script)
-├── figures        : Figures for README.md
-├── pretrain       : Directory for MoLFormer training (not used in this research)
-├── LICENSE        : License file
-└── README.md      : This file
-``` -->
+├── cache                : Directory for protein embeddings
+├── chamglam             : Source code for ChemGLaM
+├── config               : Config examples
+├── data                 : Directory for datasets 
+├── figures              : Figures for README.md
+├── logs                 : Output Directory
+├── script               : Script examples
+├── Dockerfile           : Docker file
+├── LICENSE              : License file
+├── predict.py           : main script for prediction
+├── prediction_demo.ipynb: example for inference one pair
+├── README.md            : This file
+├── setup.py             : setup file
+└── train.py             : main script for fine-tuning
+```
 
 ## Environment Setup
 
@@ -70,21 +76,18 @@ python train.py -c /path/to/config.json
 
 ### Finetuning for classification with Evidential Deep Learning (EDL)
 
-Coming Soon.
-<!-- If you want to use the [Evidential Deep Learning (EDL)](https://doi.org/10.48550/arXiv.1806.01768) for the finetuning, you can use the following script.
-
-```bash
-cd dti_finetune
-bash run_bindingdb_edl.sh
-``` -->
+By setting the argument ```"evidential"``` as ``true`` in a config file, you can run EDL for classification tasks.
+```python
+python train.py -c /path/to/edl_config.json
+```
 
 ### Inference with the finetuned model
 
 Coming Soon.  
-You can use the inference script by specifying the `--checkpoint_path` with the path to the finetuned model and setting `deterministic_eval=True` for reproducible results.
+You can use the inference script by specifying the `--checkpoint_path` with the path to the finetuned model and setting `deterministic_eval: true` for reproducible results.
 
 ```bash
-python predict.py -c /path/to/config.json --deterministic_eval=True
+python predict.py -c /path/to/inference_config.json
 ```
 
 ### Run with Docker
