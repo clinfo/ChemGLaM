@@ -1,5 +1,5 @@
 {
-    "experiment_name": "pdbbind_cv4_scratch_attn",
+    "experiment_name": "pdbbind_cv4",
     "cache_dir": "pdbbind_cv4",
     "debug": false,
     "protein_model_name": "facebook/esm2_t36_3B_UR50D",
@@ -7,7 +7,7 @@
     "dropout": 0.1,
     "num_target_encoders_tuned": 0,
     "featurization_type": "embedding",
-    "dataset_csv_path": "data/pdbbind/cv4/total.csv",
+    "dataset_csv_path": "data/pdbbind/cv4/train_valid.csv",
     "split_json_path": "data/pdbbind/cv4/train_valid_split.json",
     "checkpoint_path": null,
     "protein_sequence_column": "target_sequence",
