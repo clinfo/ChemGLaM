@@ -4,6 +4,7 @@ logs_bup/*
 cache/*
 wandb/*
 local_data/*
+local_config/*
 notebooks/*
 
 # Byte-compiled / optimized / DLL files

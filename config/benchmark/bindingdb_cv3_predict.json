@@ -1,5 +1,5 @@
 {
-    "experiment_name": "bindingdb_cv3_scratch_attn_test_predict",
+    "experiment_name": "bindingdb_cv3_test_predict",
     "cache_dir": "bindingdb_cv3_test",
     "debug": false,
     "protein_model_name": "facebook/esm2_t36_3B_UR50D",
@@ -10,7 +10,7 @@
     "featurization_type": "embedding",
     "dataset_csv_path": "data/bindingdb/cv3/test.csv",
     "split_json_path": null,
-    "checkpoint_path": "logs/bindingdb_cv3_scratch_attn/best_checkpoint.ckpt",
+    "checkpoint_path": "logs/bindingdb_cv3/best_checkpoint.ckpt",
     "protein_sequence_column": "target_sequence",
     "drug_smiles_column": "smiles",
     "target_columns": [

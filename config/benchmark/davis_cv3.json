@@ -1,5 +1,5 @@
 {
-    "experiment_name": "davis_cv3_scratch_attn",
+    "experiment_name": "davis_cv3",
     "cache_dir": "davis_cv3",
     "debug": false,
     "protein_model_name": "facebook/esm2_t36_3B_UR50D",
