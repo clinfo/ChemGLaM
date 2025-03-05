@@ -1,5 +1,5 @@
 {
-    "experiment_name": "metz_cv1_scratch_attn",
+    "experiment_name": "metz_cv1",
     "cache_dir": "metz_cv1",
     "debug": false,
     "protein_model_name": "facebook/esm2_t36_3B_UR50D",
