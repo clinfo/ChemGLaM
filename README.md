@@ -13,7 +13,6 @@
     - [Inference with the finetuned model](#inference-with-the-finetuned-model)
     - [Run with Docker](#run-with-docker)
   - [Contact](#contact)
-  - [Copyright](#copyright)
   - [Reference](#reference)
 ---
 
@@ -108,10 +107,6 @@ python train.py -c config/benchmark/bindingdb_cv0.json
 
 ## Contact
 - Takuto Koyama: koyama.takuto.82j[at]st.kyoto-u.ac.jp
-
-## Copyright
-
-This product includes source codes from the MoLFormer project by IBM Corporation (https://github.com/IBM/molformer), which is licensed under the Apache License 2.0. For details, see the `NOTICE.md` file.
 
 ## Reference
 bioRxiv
