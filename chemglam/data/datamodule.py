@@ -72,16 +72,16 @@ class DTIDataModule(L.LightningDataModule):
     def load_csv(self, path):
         df = pd.read_csv(path)
         if self.config.target_columns is not None:
-            df = df[['smiles', 'target_sequence', self.config.target_id_column, *self.config.target_columns]]
+            df = df[[self.config.drug_smiles_column, self.config.protein_sequence_column, self.config.target_id_column, *self.config.target_columns]]
         else:
-            df = df[["smiles",  "target_sequence", self.config.target_id_column]]
+            df = df[[self.config.drug_smiles_column,  self.config.protein_sequence_column, self.config.target_id_column]]
         df = df.dropna()
         
         if self.config.canonicalize_smiles:    
-            df['canonical_smiles'] = df['smiles'].apply(lambda smi: self.normalize_smiles(smi, canonical=True, isomeric=False))
+            df['canonical_smiles'] = df[self.config.drug_smiles_column].apply(lambda smi: self.normalize_smiles(smi, canonical=True, isomeric=False))
         else:
-            df['canonical_smiles'] = df['smiles']
-        df['replaced_sequence'] = df['target_sequence'].apply(lambda seq: " ".join(list(re.sub(r"[UZOB]", "X", seq))))
+            df['canonical_smiles'] = df[self.config.drug_smiles_column]
+        df['replaced_sequence'] = df[self.config.protein_sequence_column].apply(lambda seq: " ".join(list(re.sub(r"[UZOB]", "X", seq))))
         
         len_df = len(df)
         
