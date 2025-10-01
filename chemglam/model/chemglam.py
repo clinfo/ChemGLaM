@@ -4,6 +4,8 @@ from transformers import AutoModel, AutoTokenizer, AutoConfig
 from peft import get_peft_model, LoraConfig, TaskType
 from sklearn.metrics import roc_auc_score, precision_recall_curve, auc
 import torch.nn.functional as F
+import pandas as pd
+import os
 
 from chemglam.utils.config import Config
 from chemglam.model.cross_attention import CrossAttention
@@ -176,9 +178,9 @@ class ChemGLaM(L.LightningModule):
     def on_validation_epoch_end(self):
         avg_loss = torch.stack([x['val_loss'] for x in self.validation_outputs]).mean()
         self.log('avg_val_loss', avg_loss, sync_dist=True, prog_bar=True)
-        
+
         preds = torch.cat([x['preds'] for x in self.validation_outputs])
-        
+
         if self.config.task_type == "classification" and not self.config.evidential:
             if self.config.num_classes == 1:
                 preds = torch.sigmoid(preds)
@@ -187,25 +189,44 @@ class ChemGLaM(L.LightningModule):
         if self.config.task_type == "classification" and self.config.evidential:
             evidence = F.softplus(preds)
             alpha = evidence + 1
-            
+
             uncertainty = (2 / torch.sum(alpha, dim=1, keepdim=True))
             preds = alpha / torch.sum(alpha, dim=1, keepdim=True)
             preds = preds[:, 1].unsqueeze(1)
-            
+
         targets = torch.cat([x['targets'] for x in self.validation_outputs])
         if self.config.task_type == "classification" and self.config.evidential:
             targets = targets[:, 1].unsqueeze(1)
-        
+
+        # Save validation results to CSV
+        results = {
+            'epoch': self.current_epoch,
+            'avg_val_loss': avg_loss.item(),
+        }
+
         if self.config.task_type == "classification":
             roc_auc = roc_auc_score(targets.cpu().numpy(), preds.cpu().numpy())
             precision, recall, _ = precision_recall_curve(targets.cpu().numpy(), preds.cpu().numpy())
             pr_auc = auc(recall, precision)
             self.log('val_roc_auc', roc_auc, sync_dist=True, prog_bar=True)
             self.log('val_pr_auc', pr_auc, sync_dist=True, prog_bar=True)
+            results['val_roc_auc'] = roc_auc
+            results['val_pr_auc'] = pr_auc
         if self.config.task_type == "regression":
             rmse = torch.sqrt(torch.nn.functional.mse_loss(preds, targets))
             self.log('val_rmse', rmse, sync_dist=True, prog_bar=True)
-        
+            results['val_rmse'] = rmse.item()
+
+        # Save to CSV
+        csv_path = f"./logs/{self.config.experiment_name}/validation_results.csv"
+        os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+
+        df = pd.DataFrame([results])
+        if os.path.exists(csv_path):
+            df.to_csv(csv_path, mode='a', header=False, index=False)
+        else:
+            df.to_csv(csv_path, mode='w', header=True, index=False)
+
         self.validation_outputs.clear()
 
     def test_step(self, batch, batch_idx):
