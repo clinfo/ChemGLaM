@@ -65,9 +65,11 @@ class ChemGLaM(L.LightningModule):
                                               dim_head=96
                                               )
 
+        mlp_num_layers = config.mlp_num_layers if hasattr(config, 'mlp_num_layers') else 2
         self.mlp_net = MLPNet(emb_dim=768+self.protein_dim_table[self.protein_model_name],
-                              num_classes=config.num_classes, 
-                              dropout=config.dropout) 
+                              num_classes=config.num_classes,
+                              dropout=config.dropout,
+                              num_layers=mlp_num_layers) 
 
         num_target_encoder_layers = int(self.protein_model_name.split(
             "_")[1].split("t")[1])  # facebook/esm2_t30_150M_UR50D => 30
@@ -208,17 +210,24 @@ class ChemGLaM(L.LightningModule):
             roc_auc = roc_auc_score(targets.cpu().numpy(), preds.cpu().numpy())
             precision, recall, _ = precision_recall_curve(targets.cpu().numpy(), preds.cpu().numpy())
             pr_auc = auc(recall, precision)
+            avg_auc = (roc_auc + pr_auc) / 2.0
             self.log('val_roc_auc', roc_auc, sync_dist=True, prog_bar=True)
             self.log('val_pr_auc', pr_auc, sync_dist=True, prog_bar=True)
+            self.log('val_avg_auc', avg_auc, sync_dist=True, prog_bar=True)
             results['val_roc_auc'] = roc_auc
             results['val_pr_auc'] = pr_auc
+            results['val_avg_auc'] = avg_auc
         if self.config.task_type == "regression":
             rmse = torch.sqrt(torch.nn.functional.mse_loss(preds, targets))
             self.log('val_rmse', rmse, sync_dist=True, prog_bar=True)
             results['val_rmse'] = rmse.item()
 
         # Save to CSV
-        csv_path = f"./logs/{self.config.experiment_name}/validation_results.csv"
+        # optuna実行時は experiment_name に "trial_X" が含まれるため、./logs/optuna/ に保存
+        if "/trial_" in self.config.experiment_name:
+            csv_path = f"./logs/optuna/{self.config.experiment_name}/validation_results.csv"
+        else:
+            csv_path = f"./logs/{self.config.experiment_name}/validation_results.csv"
         os.makedirs(os.path.dirname(csv_path), exist_ok=True)
 
         df = pd.DataFrame([results])

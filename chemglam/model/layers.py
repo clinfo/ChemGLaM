@@ -6,39 +6,49 @@ class MLPNet(nn.Module):
     """_summary_
 
     Args:
-    - emb_dim: int, the dimension of the intermediate embeddings   
+    - emb_dim: int, the dimension of the intermediate embeddings
     - num_classes: int, the number of classes to predict
     - dropout: float, the dropout rate
+    - num_layers: int, the number of MLP layers (default: 2)
 
     Returns:
     - z: tensor, the output of the network
     """
 
-    def __init__(self, emb_dim, num_classes, dropout=0.2):
+    def __init__(self, emb_dim, num_classes, dropout=0.2, num_layers=2):
 
         super().__init__()
         self.desc_skip_connection = True
+        self.num_layers = num_layers
+        self.emb_dim = emb_dim
         print('dropout is {}'.format(dropout))
+        print('num_layers is {}'.format(num_layers))
 
-        self.fc1 = nn.Linear(emb_dim, emb_dim)
-        self.dropout1 = nn.Dropout(dropout)
-        self.relu1 = nn.GELU()
-        self.fc2 = nn.Linear(emb_dim, emb_dim)
-        self.dropout2 = nn.Dropout(dropout)
-        self.relu2 = nn.GELU()
+        # Create layers dynamically
+        self.layers = nn.ModuleList()
+        for i in range(num_layers):
+            self.layers.append(nn.Linear(emb_dim, emb_dim))
+            self.layers.append(nn.Dropout(dropout))
+            self.layers.append(nn.GELU())
+
         self.final = nn.Linear(emb_dim, num_classes)
 
     def forward(self, inter_emb):
-        x_out = self.fc1(inter_emb)
-        x_out = self.dropout1(x_out)
-        x_out = self.relu1(x_out)
+        x_out = inter_emb
+        x_residual = inter_emb
 
-        x_out = x_out + inter_emb
+        for i in range(self.num_layers):
+            # Linear layer
+            x_out = self.layers[i * 3](x_out)
+            # Dropout
+            x_out = self.layers[i * 3 + 1](x_out)
+            # GELU
+            x_out = self.layers[i * 3 + 2](x_out)
+            # Residual connection
+            x_out = x_out + x_residual
+            x_residual = x_out
 
-        z = self.fc2(x_out)
-        z = self.dropout2(z)
-        z = self.relu2(z)
-        z = self.final(z + x_out)
+        z = self.final(x_out)
         return z
 
 

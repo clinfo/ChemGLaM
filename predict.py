@@ -28,8 +28,30 @@ def main():
     config = Config(args.config)
     print(config)
     seed_everything(config.seed, workers=True)
-    
-    model = ChemGLaM.load_from_checkpoint(config.checkpoint_path, config=config)
+
+    # Load checkpoint and convert old MLPNet keys to new format
+    checkpoint = torch.load(config.checkpoint_path, weights_only=False)
+    state_dict = checkpoint['state_dict']
+
+    # Convert old MLPNet structure (fc1, fc2) to new structure (layers)
+    keys_to_convert = [
+        ('mlp_net.fc1.weight', 'mlp_net.layers.0.weight'),
+        ('mlp_net.fc1.bias', 'mlp_net.layers.0.bias'),
+        ('mlp_net.fc2.weight', 'mlp_net.layers.3.weight'),
+        ('mlp_net.fc2.bias', 'mlp_net.layers.3.bias'),
+    ]
+
+    for old_key, new_key in keys_to_convert:
+        if old_key in state_dict:
+            state_dict[new_key] = state_dict.pop(old_key)
+
+    checkpoint['state_dict'] = state_dict
+
+    # Save converted checkpoint temporarily
+    temp_checkpoint_path = config.checkpoint_path.replace('.ckpt', '_converted.ckpt')
+    torch.save(checkpoint, temp_checkpoint_path)
+
+    model = ChemGLaM.load_from_checkpoint(temp_checkpoint_path, config=config)
     
     datamodule = DTIDataModule(config)
     
@@ -43,8 +65,8 @@ def main():
     
     datamodule.prepare_data()
     if config.target_columns is not None:
-        trainer.test(model, ckpt_path=config.checkpoint_path, datamodule=datamodule, verbose=True)
-    result = trainer.predict(model, ckpt_path=config.checkpoint_path, datamodule=datamodule)
+        trainer.test(model, datamodule=datamodule, verbose=True)
+    result = trainer.predict(model, datamodule=datamodule)
     
     predictions = []
     attention_weights = []

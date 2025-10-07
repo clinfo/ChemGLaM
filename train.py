@@ -32,6 +32,15 @@ def main():
     model = ChemGLaM(config)
     datamodule = DTIDataModule(config)
 
+    # Gradient accumulation: batch_size > 16の場合に使用
+    accumulate_grad_batches = 1
+    if hasattr(config, 'batch_size') and config.batch_size > 16:
+        accumulate_grad_batches = config.batch_size // 16
+        # 実際のbatch sizeを16に調整
+        config.__dict__['batch_size'] = 16
+        # データモジュールを再作成
+        datamodule = DTIDataModule(config)
+
     checkpoint_callback = ModelCheckpoint(
         monitor="avg_val_loss",
         mode="min",
@@ -43,6 +52,15 @@ def main():
 
     wandb_logger = WandbLogger(project="ChemGLaM", name=config.experiment_name)
 
+    # Multi-GPU strategy
+    if config.num_gpus > 1:
+        strategy = DDPStrategy(
+            find_unused_parameters=False,
+            timeout=timedelta(minutes=30)
+        )
+    else:
+        strategy = "auto"
+
     trainer = L.Trainer(
         max_epochs=config.num_epochs,
         enable_progress_bar=True,
@@ -50,9 +68,11 @@ def main():
         gradient_clip_val=None,
         default_root_dir=f"./logs/{config.experiment_name}",
         devices=config.num_gpus,
+        strategy=strategy,
         callbacks=[checkpoint_callback],
         logger=wandb_logger,
         num_sanity_val_steps=0,
+        accumulate_grad_batches=accumulate_grad_batches,
     )
 
     trainer.fit(model, datamodule, ckpt_path=config.checkpoint_path,)

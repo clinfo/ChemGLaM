@@ -14,6 +14,7 @@ class Config:
         "lora_dropout": 0.1,
         "dropout": 0.1,
         "lora_r": 4,
+        "mlp_num_layers": 2,
         "dataset_csv_path": "data/demo_dataset.csv",
         "protein_sequence_column": "target_sequence",
         "target_id_column": "target_id",
