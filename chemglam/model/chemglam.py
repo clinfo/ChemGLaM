@@ -9,7 +9,7 @@ import os
 
 from chemglam.utils.config import Config
 from chemglam.model.cross_attention import CrossAttention
-from chemglam.model.layers import MLPNet
+from chemglam.model.layers import MLPNet, MLPNetv2
 from chemglam.criterion.evidential_loss import EvidentialLoss
 
 class ChemGLaM(L.LightningModule):
@@ -52,12 +52,14 @@ class ChemGLaM(L.LightningModule):
         
         if config.featurization_type == "embedding":
             self.target_encoder = None
-        else:       
+            self.protein_tokenizer = None
+            print("Using pre-computed protein embeddings (target_encoder disabled)")
+        else:
             self.target_encoder = AutoModel.from_pretrained(
                 self.protein_model_name).half()
-            
-        self.protein_tokenizer = AutoTokenizer.from_pretrained(
-            self.protein_model_name)
+            self.protein_tokenizer = AutoTokenizer.from_pretrained(
+                self.protein_model_name)
+            print(f"Using {self.protein_model_name} for protein encoding")
 
         self.cross_attention = CrossAttention(drug_dim=768,
                                               target_dim=self.protein_dim_table[self.protein_model_name],
@@ -131,37 +133,37 @@ class ChemGLaM(L.LightningModule):
         lora_model = get_peft_model(model, lora_config)
         return lora_model
 
-    def forward(self, batch):
+    def forward(self, batch, return_attention_weights=False):
         drug_ids = batch["drug_ids"]
         drug_mask = batch["drug_mask"]
         target_ids = batch["target_ids"]
         target_mask = batch["target_mask"]
-        
-        
+
+
         drug_output = self.drug_encoder(
             input_ids=drug_ids, attention_mask=drug_mask).last_hidden_state
-        
+
         if self.target_encoder is not None:
             target_output = self.target_encoder(
                 input_ids=target_ids, attention_mask=target_mask).last_hidden_state
         else:
             target_output = batch["target_embedding"]
-            
+
         interaction_output, weight = self.cross_attention(
             drug_output, target_output, drug_mask, target_mask)
-        
+
         input_mask_expanded = drug_mask.unsqueeze(-1).expand(interaction_output.size()).float()
         sum_embeddings = torch.sum(interaction_output * input_mask_expanded, 1)
         sum_mask = torch.clamp(input_mask_expanded.sum(1), min=1e-9)
         interaction_output = sum_embeddings / sum_mask
-        
+
         target_output = target_output * target_mask.unsqueeze(-1)
         target_output = target_output.sum(dim=1) / target_mask.sum(dim=1).unsqueeze(-1)
-        
+
         interaction_output = torch.cat([interaction_output, target_output], dim=1)
-        
+
         output = self.mlp_net(interaction_output)
-        return output, weight
+        return output, weight if return_attention_weights else None
     
     def training_step(self, batch, batch_idx):
         output, _ = self(batch)
@@ -169,6 +171,16 @@ class ChemGLaM(L.LightningModule):
         loss = self.loss(output, measures)
         self.log("train_loss", loss, on_step=True, prog_bar=True, batch_size=output.size(0))
         return loss
+    
+    def on_train_epoch_end(self):
+        """Logs the learning rate at the start of each training epoch."""
+        optimizer = self.optimizers()
+        
+        molformer_lr = optimizer.param_groups[0]['lr']
+        other_lr = optimizer.param_groups[1]['lr']
+        
+        self.log('lr/molformer', molformer_lr, on_step=False, on_epoch=True, prog_bar=True)
+        self.log('lr/other', other_lr, on_step=False, on_epoch=True, prog_bar=False)
 
     def validation_step(self, batch, batch_idx):
         output, _ = self(batch)
@@ -225,9 +237,9 @@ class ChemGLaM(L.LightningModule):
         # Save to CSV
         # optuna実行時は experiment_name に "trial_X" が含まれるため、./logs/optuna/ に保存
         if "/trial_" in self.config.experiment_name:
-            csv_path = f"./logs/optuna/{self.config.experiment_name}/validation_results.csv"
+            csv_path = f"./logs/{self.config.wandb_project}/optuna/{self.config.experiment_name}/validation_results.csv"
         else:
-            csv_path = f"./logs/{self.config.experiment_name}/validation_results.csv"
+            csv_path = f"./logs/{self.config.wandb_project}/{self.config.experiment_name}/validation_results.csv"
         os.makedirs(os.path.dirname(csv_path), exist_ok=True)
 
         df = pd.DataFrame([results])
@@ -282,11 +294,84 @@ class ChemGLaM(L.LightningModule):
         self.test_outputs.clear()
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate)
-        return optimizer
+        # Check if scheduler is enabled in config
+        use_scheduler = self.config.__dict__.get('use_scheduler', False)
+        warmup_epochs = self.config.__dict__.get('warmup_epochs', 0)
+        warmup_start_lr = self.config.__dict__.get('warmup_start_lr', 1e-8)
+        min_lr = self.config.__dict__.get('min_lr', 0)
+
+        # Use self.learning_rate as max_lr for MoLFormer
+        max_lr = self.learning_rate
+
+        # Separate parameters into two groups:
+        # 1. MoLFormer (drug_encoder) - with warmup + cosine decay (if scheduler enabled)
+        # 2. MLP and CrossAttention - with constant lr (learning_rate)
+        molformer_params = []
+        other_params = []
+
+        for name, param in self.named_parameters():
+            if not param.requires_grad:
+                continue
+            if 'drug_encoder' in name:
+                molformer_params.append(param)
+            else:
+                other_params.append(param)
+
+        # Create optimizer with different initial learning rates
+        if use_scheduler:
+            # MoLFormer starts at warmup_start_lr, will be scheduled to max_lr
+            molformer_initial_lr = warmup_start_lr
+        else:
+            # No scheduler: use max_lr (learning_rate) for all
+            molformer_initial_lr = max_lr
+
+        param_groups = [
+            {'params': molformer_params, 'lr': molformer_initial_lr, 'name': 'molformer'},
+            {'params': other_params, 'lr': max_lr, 'name': 'other'}
+        ]
+
+        optimizer = torch.optim.AdamW(param_groups)
+
+        if not use_scheduler:
+            return optimizer
+
+        # Apply scheduler only to MoLFormer parameters
+        from torch.optim.lr_scheduler import LambdaLR
+        import math
+
+        # For MoLFormer group (index 0)
+        def molformer_lambda(epoch):
+            if epoch < warmup_epochs:
+                # Linear warmup: warmup_start_lr → max_lr (learning_rate)
+                return 1.0 + (max_lr / warmup_start_lr - 1.0) * epoch / warmup_epochs
+            else:
+                # Cosine decay: max_lr → min_lr
+                progress = (epoch - warmup_epochs) / (self.config.num_epochs - warmup_epochs)
+                cosine_decay = 0.5 * (1 + math.cos(progress * math.pi))
+                return (max_lr - min_lr) * cosine_decay / warmup_start_lr + min_lr / warmup_start_lr
+
+        # For other parameters (index 1) - constant lr
+        def other_lambda(epoch):
+            return 1.0
+
+        scheduler = LambdaLR(optimizer, lr_lambda=[molformer_lambda, other_lambda])
+
+        return {
+            'optimizer': optimizer,
+            'lr_scheduler': {
+                'scheduler': scheduler,
+                'interval': 'epoch',
+                'frequency': 1
+            }
+        }
     
     def predict_step(self, batch, batch_idx, dataloader_idx=0):
-        return self(batch)
+        return_weights = self.config.save_attention_weight if hasattr(self.config, 'save_attention_weight') else False
+        output, weight = self(batch, return_attention_weights=return_weights)
+        # Detach to prevent memory accumulation from computation graph
+        output = output.detach()
+        weight = weight.detach() if weight is not None else None
+        return output, weight
     
     def predict(self, smiles, sequence):
             drug_input = self.smi_tokenizer(smiles, return_tensors="pt", padding=True)

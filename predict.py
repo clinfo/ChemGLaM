@@ -29,9 +29,19 @@ def main():
     print(config)
     seed_everything(config.seed, workers=True)
 
-    # Load checkpoint and convert old MLPNet keys to new format
+    # Load checkpoint and detect MLP structure
     checkpoint = torch.load(config.checkpoint_path, weights_only=False)
     state_dict = checkpoint['state_dict']
+
+    # Detect which MLP structure is used in the checkpoint
+    has_mlpnet_old = 'mlp_net.fc1.weight' in state_dict  # Very old structure
+    has_mlpnet = 'mlp_net.layers.0.weight' in state_dict and 'mlp_net.layers.3.weight' in state_dict  # Old MLPNet
+    has_mlpnetv2 = 'mlp_net.layers.0.layer_norm.weight' in state_dict  # New MLPNetv2
+
+    print(f"Checkpoint MLP structure detection:")
+    print(f"  - Very old MLPNet (fc1/fc2): {has_mlpnet_old}")
+    print(f"  - Old MLPNet (layers): {has_mlpnet}")
+    print(f"  - New MLPNetv2 (with LayerNorm): {has_mlpnetv2}")
 
     # Convert old MLPNet structure (fc1, fc2) to new structure (layers)
     keys_to_convert = [
@@ -52,14 +62,20 @@ def main():
     torch.save(checkpoint, temp_checkpoint_path)
 
     model = ChemGLaM.load_from_checkpoint(temp_checkpoint_path, config=config)
-    
+
     datamodule = DTIDataModule(config)
-    
+
+    # Set log directory based on wandb_project availability
+    if 'wandb_project' in config:
+        log_dir = f"./logs/{config.wandb_project}/{config.experiment_name}"
+    else:
+        log_dir = f"./logs/{config.experiment_name}"
+
     trainer = L.Trainer(
         enable_progress_bar=True,
         accelerator="gpu",
         gradient_clip_val=None,
-        default_root_dir=f"./logs/{config.experiment_name}",
+        default_root_dir=log_dir,
         devices=1,
         )
     
@@ -97,7 +113,7 @@ def main():
         predictions = predictions[:, 1]
         
     if config.save_attention_weight:
-        torch.save(attention_weights, f"./logs/{config.experiment_name}/attention_weights.pt")
+        torch.save(attention_weights, f"{log_dir}/attention_weights.pt")
     
     df_pred = pd.DataFrame(predictions.cpu().numpy(), columns=["pred"])
     if config.task_type == "classification" and config.evidential:
@@ -105,7 +121,7 @@ def main():
     
     if config.target_columns is not None:
         df_pred[config.target_columns] = datamodule.dataset.df[config.target_columns].values
-    df_pred.to_csv(f"./logs/{config.experiment_name}/prediction.csv", index=False)
+    df_pred.to_csv(f"{log_dir}/prediction.csv", index=False)
 
 if __name__ == "__main__":
     main()

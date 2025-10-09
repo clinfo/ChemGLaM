@@ -62,8 +62,19 @@ class DTIDataModule(L.LightningDataModule):
         
         self.protein_tokenizer = AutoTokenizer.from_pretrained(self.config.protein_model_name, trust_remote_code=True)
         self.protein_collator = DataCollatorWithPadding(tokenizer=self.protein_tokenizer)
+
+        # Only load protein model if we need to compute embeddings (not cached)
         if config.featurization_type == "embedding":
-            self.protein_model = EsmModel.from_pretrained(self.config.protein_model_name, trust_remote_code=True)
+            # Check if embeddings are already cached
+            protein_embedding_cache = os.path.join(self.cache_dir, f"protein_embeddings.pt")
+            if os.path.exists(protein_embedding_cache):
+                print(f"Using cached protein embeddings from {protein_embedding_cache}")
+                self.protein_model = None
+            else:
+                print(f"Loading {self.config.protein_model_name} to compute protein embeddings")
+                self.protein_model = EsmModel.from_pretrained(self.config.protein_model_name, trust_remote_code=True)
+        else:
+            self.protein_model = None
         
         self.smi_tokenizer = AutoTokenizer.from_pretrained('ibm/MoLFormer-XL-both-10pct', trust_remote_code=True)
         

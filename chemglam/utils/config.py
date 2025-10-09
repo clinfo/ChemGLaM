@@ -49,6 +49,10 @@ class Config:
     def __getattr__(self, key):
         return self.__dict__[key]
 
+    # 'key' in config で存在確認できるようにする
+    def __contains__(self, key):
+        return key in self.__dict__
+
     # configの状態を確認できるようにする
     def __str__(self):
         output = "========config========\n"

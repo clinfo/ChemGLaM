@@ -52,6 +52,41 @@ class MLPNet(nn.Module):
         return z
 
 
+class Block(nn.Module):
+    """A single block of the MLP: Linear -> GELU -> LayerNorm -> Dropout"""
+    def __init__(self, emb_dim, dropout):
+        super().__init__()
+        self.layer_norm = nn.LayerNorm(emb_dim)
+        self.linear = nn.Linear(emb_dim, emb_dim)
+        self.dropout = nn.Dropout(dropout)
+        self.gelu = nn.GELU()
+
+    def forward(self, x):
+        h = self.linear(x)
+        h = self.gelu(h)
+        h = self.layer_norm(h)
+        h = self.dropout(h)
+        return h
+
+class MLPNetv2(nn.Module):
+    def __init__(self, emb_dim, num_classes, dropout=0.2, num_layers=2):
+        super().__init__()
+
+        self.layers = nn.ModuleList([
+            Block(emb_dim=emb_dim, dropout=dropout) for _ in range(num_layers)
+        ])
+        self.final = nn.Linear(emb_dim, num_classes)
+
+    def forward(self, inter_emb):
+        x_out = inter_emb
+
+        for layer in self.layers:
+            x_residual = layer(x_out)
+            x_out = x_out + x_residual
+
+        z = self.final(x_out)
+        return z
+
 class LMLayer(nn.Module):
     """_summary_
 

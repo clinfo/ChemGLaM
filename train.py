@@ -41,16 +41,25 @@ def main():
         # データモジュールを再作成
         datamodule = DTIDataModule(config)
 
+    # Get wandb project name from config, default to "ChemGLaM"
+    wandb_project = getattr(config, 'wandb_project', 'ChemGLaM')
+
+    # Log directory includes wandb project name only if explicitly specified
+    if 'wandb_project' in config:
+        log_dir = f"./logs/{wandb_project}/{config.experiment_name}"
+    else:
+        log_dir = f"./logs/{config.experiment_name}"
+
     checkpoint_callback = ModelCheckpoint(
         monitor="avg_val_loss",
         mode="min",
         save_top_k=1,
-        dirpath=f"./logs/{config.experiment_name}",
+        dirpath=log_dir,
         filename="best_checkpoint",
         enable_version_counter=False,
     )
 
-    wandb_logger = WandbLogger(project="ChemGLaM", name=config.experiment_name)
+    wandb_logger = WandbLogger(project=wandb_project, name=config.experiment_name)
 
     # Multi-GPU strategy
     if config.num_gpus > 1:
@@ -66,7 +75,7 @@ def main():
         enable_progress_bar=True,
         accelerator="gpu",
         gradient_clip_val=None,
-        default_root_dir=f"./logs/{config.experiment_name}",
+        default_root_dir=log_dir,
         devices=config.num_gpus,
         strategy=strategy,
         callbacks=[checkpoint_callback],
